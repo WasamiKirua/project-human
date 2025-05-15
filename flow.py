@@ -1,4 +1,4 @@
-from pocketflow import Flow, Node
+from pocketflow import Flow, AsyncFlow, Node
 
 # Create a simple EndNode
 class EndNode(Node):
@@ -41,14 +41,12 @@ def create_chat_flow():
     
     # Loop back for next question
     answer_node - "question" >> question_node
-    # embed_node - "question" >> question_node
-    # embed_node_short - "question" >> question_node
     
     # Add exit path
     question_node - "exit" >> end_node
     
-    # Create the flow starting with question node
-    return Flow(start=question_node)
+    # Create the AsyncFlow starting with question node to support async operations
+    return AsyncFlow(start=question_node)
 
 # Initialize the flow
 chat_flow = create_chat_flow()

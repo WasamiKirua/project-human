@@ -1,10 +1,12 @@
 import apsw
 import sqlite_vec
 import os
+import json
+from openai import AsyncOpenAI
 from utils.vector_index import SHORT_MEM_DB
-from pocketflow import Node
-from utils.vector_index import create_index, add_vector, search_vectors
-from utils.call_llm import call_llm, call_llm_mem
+from pocketflow import Node, AsyncNode
+from utils.vector_index import create_index, add_vector, search_vectors, get_all_items
+from utils.call_llm import call_llm, call_llm_mem_async
 
 class GetUserQuestionNode(Node):
     def prep(self, shared):
@@ -290,10 +292,25 @@ class EmbedNodeShort(Node):
         print("✅ Proceeding to long-term memory evaluation")
         return "decide_long_term"
 
-class EmbedNodeLong(Node):
+class EmbedNodeLong(AsyncNode):
     def prep(self, shared):
+        """Retrieve recently stored messages from SQLite for evaluation - synchronous method
+        This method is used when AsyncNode is used in a regular Flow
+        """
+        print("📋 EmbedNodeLong.prep() called (sync)")
+        
+        # Call the async version of prep
+        import asyncio
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(self.prep_async(shared))
+        finally:
+            loop.close()
+    
+    async def prep_async(self, shared):
         """Retrieve recently stored messages from SQLite for evaluation"""
-        print("📋 EmbedNodeLong.prep() called")
+        print("📋 EmbedNodeLong.prep_async() called")
         
         # Check if there are any batches to evaluate
         if not shared.get("short_term_items"):
@@ -341,10 +358,27 @@ class EmbedNodeLong(Node):
             import traceback
             traceback.print_exc()
             return None
-        
+    
     def exec(self, batch_data):
-        """Evaluate which messages should be stored long-term"""
-        print("📋 EmbedNodeLong.exec() called")
+        """Evaluate which messages should be stored long-term - synchronous method
+        This method is used when AsyncNode is used in a regular Flow
+        """
+        print("📋 EmbedNodeLong.exec() called (sync)")
+        
+        # Start new event loop for the async execution
+        import asyncio
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            # Call the async version
+            return loop.run_until_complete(self.exec_async(batch_data))
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+        
+    async def exec_async(self, batch_data):
+        """Evaluate which messages should be stored long-term - async implementation"""
+        print("📋 EmbedNodeLong.exec_async() called")
         
         if not batch_data or "messages" not in batch_data or not batch_data["messages"]:
             print("❌ No messages to evaluate")
@@ -357,34 +391,54 @@ class EmbedNodeLong(Node):
         }
         
         try:
-            for msg in batch_data["messages"]:
-                try:
-                    # Only process user messages
+            # Get API key
+            openai_key = os.getenv('OPENAI_API_KEY')
+            client = AsyncOpenAI(api_key=openai_key)
+            
+            try:
+                # Process messages asynchronously - filtering for user messages
+                for msg in batch_data["messages"]:
                     if not msg["text"].startswith("User: "):
                         print(f"⏩ Skipping assistant message {msg['id']}")
                         continue
-                    
+                        
                     # Extract just the user message content without the "User: " prefix
                     user_content = msg["text"][6:] if msg["text"].startswith("User: ") else msg["text"]
                     
-                    # Call the OpenAI API with just the text content
-                    response = call_llm_mem(user_content)
-                    
-                    # Check if the message is important
-                    if response and hasattr(response, 'content'):
-                        import json
-                        result_json = json.loads(response.content)
-                        if result_json.get("is_important", False):
-                            # If important, add the original message with id and text
-                            result["important_messages"].append({
-                                "id": msg["id"],
-                                "text": msg["text"]
-                            })
-                            print(f"✅ Message {msg['id']} marked as important: {result_json.get('formatted_memory')}")
-                except Exception as msg_error:
-                    print(f"❌ Error evaluating message {msg['id']}: {str(msg_error)}")
-                    continue
-                    
+                    try:
+                        # Memory evaluation can continue in background while other evaluations proceed
+                        print(f"🔄 Processing message {msg['id']} asynchronously")
+                        
+                        # Use the async version of call_llm_mem_async from utils
+                        message_obj = await call_llm_mem_async(user_content)
+                        
+                        # Check if the message object is valid and has content
+                        if message_obj and hasattr(message_obj, 'content'):
+                            # Print the raw content for debugging
+                            print(f"💬 Raw message content: {message_obj.content[:100]}...")
+                            
+                            try:
+                                # Parse the JSON response
+                                result_json = json.loads(message_obj.content)
+                                if result_json.get("is_important", False):
+                                    # If important, add the original message with id and text
+                                    result["important_messages"].append({
+                                        "id": msg["id"],
+                                        "text": msg["text"]
+                                    })
+                                    print(f"✅ Message {msg['id']} marked as important: {result_json.get('formatted_memory')}")
+                            except json.JSONDecodeError as json_error:
+                                # Detailed error message for debugging
+                                print(f"❌ JSON parsing error for message {msg['id']}: {str(json_error)}")
+                                print(f"❌ First 100 chars of content: {message_obj.content[:100]}")
+                        else:
+                            print(f"❌ Invalid message object for message {msg['id']}")
+                    except Exception as msg_error:
+                        print(f"❌ Error processing message {msg['id']}: {str(msg_error)}")
+            finally:
+                # Always close the client to release resources
+                await client.close()
+                
             print(f"✅ Identified {len(result['important_messages'])} important messages for long-term storage")
             
         except Exception as e:
@@ -399,12 +453,28 @@ class EmbedNodeLong(Node):
                     result["important_messages"].append(msg)
             print(f"✅ Fallback: Identified {len(result['important_messages'])} important messages using simple heuristic")
         
-        # Always return the result structure
+        # Return the result structure
         return result
     
     def post(self, shared, prep_res, exec_res):
-        """Store important messages in Weaviate for long-term memory"""
-        print("📋 EmbedNodeLong.post() called")
+        """Process the result - synchronous method
+        This method is used when AsyncNode is used in a regular Flow
+        """
+        print("📋 EmbedNodeLong.post() called (sync)")
+        
+        # Start new event loop for the async execution
+        import asyncio
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            # Call the async version
+            return loop.run_until_complete(self.post_async(shared, prep_res, exec_res))
+        finally:
+            loop.close()
+    
+    async def post_async(self, shared, prep_res, exec_res):
+        """Store important messages in Weaviate for long-term memory - async implementation"""
+        print("📋 EmbedNodeLong.post_async() called")
         
         if not exec_res or "important_messages" not in exec_res or not exec_res["important_messages"]:
             print("❌ No important messages to store in long-term memory")
@@ -428,9 +498,6 @@ class EmbedNodeLong(Node):
             print("✅ Using existing vector index")
             
         try:
-            # Add each important message to Weaviate
-            from utils.vector_index import add_vector
-            
             messages_added = 0
             for msg in important_messages:
                 # Store the message in Weaviate
@@ -496,7 +563,6 @@ class RetrieveNode(Node):
             # Try to connect to existing vector store but don't create a new one
             try:
                 print("🔄 Attempting to connect to existing vector store...")
-                from utils.vector_index import create_index, get_all_items
                 vector_index = create_index(create_new=False)
                 if vector_index[1] is not None:  # Check if collection is valid
                     shared["vector_index"] = vector_index
@@ -573,4 +639,3 @@ class RetrieveNode(Node):
             print("❌ No conversation retrieved")
         
         return "answer"
-    

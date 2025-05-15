@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 from prompts import MEMORY_ANALYSIS_PROMPT
 from dotenv import load_dotenv
 import os
@@ -34,6 +34,24 @@ def call_llm_mem(message_text):
     )
 
     return response.choices[0].message
+
+async def call_llm_mem_async(message_text):
+    """Async version of call_llm_mem that returns the same object structure"""
+    client = AsyncOpenAI(api_key=openai_key)
+    
+    try:
+        prompt = MEMORY_ANALYSIS_PROMPT.replace('{replacement}', f'{message_text}')
+
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "user", "content": f"{prompt}"}
+            ]
+        )
+
+        return response.choices[0].message
+    finally:
+        await client.close()
 
 if __name__ == "__main__":
     # Test the LLM call
