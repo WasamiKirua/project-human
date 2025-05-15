@@ -1,5 +1,11 @@
-import os
 from openai import OpenAI
+from prompts import MEMORY_ANALYSIS_PROMPT
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+openai_key = os.getenv('OPENAI_API_KEY')
 
 def call_llm(messages):
     client = OpenAI(
@@ -15,6 +21,20 @@ def call_llm(messages):
     
     return response.choices[0].message.content
 
+def call_llm_mem(message_text):
+    client = OpenAI(api_key=openai_key)
+    
+    prompt = MEMORY_ANALYSIS_PROMPT.replace('{replacement}', f'{message_text}')
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "user", "content": f"{prompt}"}
+        ]
+    )
+
+    return response.choices[0].message
+
 if __name__ == "__main__":
     # Test the LLM call
     messages = [
@@ -22,4 +42,4 @@ if __name__ == "__main__":
         {"role": "user", "content": "In a few words, what's the meaning of life?"}]
     response = call_llm(messages)
     print(f"Prompt: {messages[0]['content']}")
-    print(f"Response: {response}") 
+    print(f"Response: {response}")

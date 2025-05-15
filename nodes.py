@@ -1,6 +1,10 @@
+import apsw
+import sqlite_vec
+import os
+from utils.vector_index import SHORT_MEM_DB
 from pocketflow import Node
 from utils.vector_index import create_index, add_vector, search_vectors
-from utils.call_llm import call_llm
+from utils.call_llm import call_llm, call_llm_mem
 
 class GetUserQuestionNode(Node):
     def prep(self, shared):
@@ -129,88 +133,7 @@ class AnswerNode(Node):
         # Even if last_question is set, we continue in interactive mode
         return "question"
 
-class EmbedNodeWeaviate(Node):
-    def prep(self, shared):
-        """Extract the oldest conversation pair for embedding"""
-        print("📋 EmbedNode.prep() called")
-        
-        if len(shared["messages"]) <= 6:
-            print("❌ Not enough messages to embed yet (need > 6, have", len(shared["messages"]), ")")
-            return None
-            
-        # Extract the oldest user-assistant pair
-        oldest_pair = shared["messages"][:2]
-        # Remove them from current messages
-        shared["messages"] = shared["messages"][2:]
-        
-        print(f"✅ Extracted oldest conversation pair for embedding")
-        return oldest_pair
-    
-    def exec(self, conversation):
-        """Prepare conversation for storage"""
-        print("📋 EmbedNode.exec() called")
-        
-        if not conversation:
-            print("❌ No conversation to embed")
-            return None
-            
-        # Combine user and assistant messages into a single text for Weaviate to vectorize
-        user_msg = next((msg for msg in conversation if msg["role"] == "user"), {"content": ""})
-        assistant_msg = next((msg for msg in conversation if msg["role"] == "assistant"), {"content": ""})
-        combined = f"User: {user_msg['content']} Assistant: {assistant_msg['content']}"
-        
-        print(f"✅ Prepared conversation text for embedding: {combined[:50]}...")
-        
-        # With Weaviate's built-in vectorizer, we don't need to generate an embedding
-        # We just pass the text content directly
-        return {
-            "conversation": conversation,
-            "content": combined
-        }
-    
-    def post(self, shared, prep_res, exec_res):
-        """Store the text content and add to index"""
-        print("📋 EmbedNode.post() called")
-        
-        if not exec_res:
-            print("❌ Nothing to embed")
-            # If there's nothing to embed, just continue with the next question
-            return "question"
-            
-        # Initialize vector index if not exist
-        if "vector_index" not in shared:
-            print("🔧 Creating new vector index")
-            try:
-                # Try to connect to existing vector store first, create new only if needed
-                shared["vector_index"] = create_index(create_new=True)
-                shared["vector_items"] = []  # Track items separately
-                print("✅ Vector index created successfully")
-            except Exception as e:
-                print(f"❌ Error creating vector index: {str(e)}")
-                return "question"
-        else:
-            print("✅ Using existing vector index")
-            
-        try:
-            # Add the content to the index and store the conversation
-            position = add_vector(shared["vector_index"], content=exec_res["content"])
-            
-            # Check for sentinel value
-            if position == -1:
-                print("❌ Failed to add vector to index")
-                return "question"
-                
-            shared["vector_items"].append(exec_res["conversation"])
-            
-            print(f"✅ Added conversation to index at position {position}")
-            print(f"✅ Index now contains {len(shared['vector_items'])} conversations")
-        except Exception as e:
-            print(f"❌ Error adding vector: {str(e)}")
-            
-        # Continue with the next question
-        return "question"
-
-class EmbedNodeSql(Node):
+class EmbedNodeShort(Node):
     def prep(self, shared):
         """Extract all conversations for archiving to SQLite"""
         print("📋 EmbedNodeLite.prep() called")
@@ -268,7 +191,7 @@ class EmbedNodeSql(Node):
         print("📋 EmbedNodeLite.post() called")
         
         if not exec_res or "entries" not in exec_res or not exec_res["entries"]:
-            print("❌ Nothing to embed")
+            print("❌ Nothing was stored in short-term memory")
             # If there's nothing to embed, just continue with the next question
             return "question"
             
@@ -359,6 +282,194 @@ class EmbedNodeSql(Node):
             
         except Exception as e:
             print(f"❌ Error storing conversations in SQLite: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+        # Always proceed to long-term evaluation
+        print(f"✅ Stored {count} messages in short-term memory")
+        print("✅ Proceeding to long-term memory evaluation")
+        return "decide_long_term"
+
+class EmbedNodeLong(Node):
+    def prep(self, shared):
+        """Retrieve recently stored messages from SQLite for evaluation"""
+        print("📋 EmbedNodeLong.prep() called")
+        
+        # Check if there are any batches to evaluate
+        if not shared.get("short_term_items"):
+            print("❌ No message batches to evaluate for long-term storage")
+            return None
+            
+        # Get the most recent batch
+        latest_batch = shared["short_term_items"][-1]
+        print(f"✅ Found batch {latest_batch['batch_id']} with {latest_batch['message_count']} messages")
+        
+        try:
+            # Connect to SQLite to retrieve the messages            
+            if not os.path.exists(SHORT_MEM_DB):
+                print(f"❌ SQLite database file '{SHORT_MEM_DB}' not found")
+                return None
+                
+            # Connect to the database
+            db = apsw.Connection(SHORT_MEM_DB)
+            db.enable_load_extension(True)
+            sqlite_vec.load(db)
+            db.enable_load_extension(False)
+            
+            # Get the most recent messages (based on IDs)
+            cursor = db.execute("SELECT id, message FROM messages ORDER BY id DESC LIMIT ?", 
+                              [latest_batch["message_count"]])
+            
+            # Fetch the messages
+            messages = []
+            for row in cursor:
+                message_id, message_text = row
+                messages.append({
+                    "id": message_id,
+                    "text": message_text
+                })
+            
+            print(f"✅ Retrieved {len(messages)} messages for long-term storage evaluation")
+            
+            return {
+                "batch_info": latest_batch,
+                "messages": messages
+            }
+            
+        except Exception as e:
+            print(f"❌ Error retrieving messages from SQLite: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+        
+    def exec(self, batch_data):
+        """Evaluate which messages should be stored long-term"""
+        print("📋 EmbedNodeLong.exec() called")
+        
+        if not batch_data or "messages" not in batch_data or not batch_data["messages"]:
+            print("❌ No messages to evaluate")
+            return None
+            
+        # Initialize the return value structure with the batch_info
+        result = {
+            "batch_info": batch_data["batch_info"],
+            "important_messages": []
+        }
+        
+        try:
+            for msg in batch_data["messages"]:
+                try:
+                    # Only process user messages
+                    if not msg["text"].startswith("User: "):
+                        print(f"⏩ Skipping assistant message {msg['id']}")
+                        continue
+                    
+                    # Extract just the user message content without the "User: " prefix
+                    user_content = msg["text"][6:] if msg["text"].startswith("User: ") else msg["text"]
+                    
+                    # Call the OpenAI API with just the text content
+                    response = call_llm_mem(user_content)
+                    
+                    # Check if the message is important
+                    if response and hasattr(response, 'content'):
+                        import json
+                        result_json = json.loads(response.content)
+                        if result_json.get("is_important", False):
+                            # If important, add the original message with id and text
+                            result["important_messages"].append({
+                                "id": msg["id"],
+                                "text": msg["text"]
+                            })
+                            print(f"✅ Message {msg['id']} marked as important: {result_json.get('formatted_memory')}")
+                except Exception as msg_error:
+                    print(f"❌ Error evaluating message {msg['id']}: {str(msg_error)}")
+                    continue
+                    
+            print(f"✅ Identified {len(result['important_messages'])} important messages for long-term storage")
+            
+        except Exception as e:
+            print(f"❌ Error in importance evaluation: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback to simple heuristic if API evaluation fails
+            result["important_messages"] = []
+            for msg in batch_data["messages"]:
+                if len(msg["text"]) > 50:
+                    result["important_messages"].append(msg)
+            print(f"✅ Fallback: Identified {len(result['important_messages'])} important messages using simple heuristic")
+        
+        # Always return the result structure
+        return result
+    
+    def post(self, shared, prep_res, exec_res):
+        """Store important messages in Weaviate for long-term memory"""
+        print("📋 EmbedNodeLong.post() called")
+        
+        if not exec_res or "important_messages" not in exec_res or not exec_res["important_messages"]:
+            print("❌ No important messages to store in long-term memory")
+            return "question"
+            
+        important_messages = exec_res["important_messages"]
+        
+        # Initialize vector index if not exist
+        if "vector_index" not in shared:
+            print("🔧 Creating new vector index")
+            try:
+                # Try to connect to existing vector store first, create new only if needed
+                from utils.vector_index import create_index
+                shared["vector_index"] = create_index(create_new=True)
+                shared["vector_items"] = []  # Track items separately
+                print("✅ Vector index created successfully")
+            except Exception as e:
+                print(f"❌ Error creating vector index: {str(e)}")
+                return "question"
+        else:
+            print("✅ Using existing vector index")
+            
+        try:
+            # Add each important message to Weaviate
+            from utils.vector_index import add_vector
+            
+            messages_added = 0
+            for msg in important_messages:
+                # Store the message in Weaviate
+                position = add_vector(shared["vector_index"], content=msg["text"])
+                
+                # Check for sentinel value
+                if position == -1:
+                    print(f"❌ Failed to add message {msg['id']} to vector index")
+                    continue
+                    
+                # Store reference to the message
+                if "vector_items" not in shared:
+                    shared["vector_items"] = []
+                
+                # Parse the message into user/assistant format for consistency
+                message_text = msg["text"]
+                if message_text.startswith("User: "):
+                    role = "user"
+                    content = message_text[6:]  # Remove "User: " prefix
+                elif message_text.startswith("Assistant: "):
+                    role = "assistant"
+                    content = message_text[11:]  # Remove "Assistant: " prefix
+                else:
+                    # Default fallback
+                    role = "unknown"
+                    content = message_text
+                
+                shared["vector_items"].append({
+                    "role": role,
+                    "content": content
+                })
+                
+                messages_added += 1
+            
+            print(f"✅ Added {messages_added} important messages to long-term memory")
+            if "vector_items" in shared:
+                print(f"✅ Long-term memory now contains {len(shared['vector_items'])} total messages")
+        except Exception as e:
+            print(f"❌ Error adding messages to long-term memory: {str(e)}")
             import traceback
             traceback.print_exc()
             

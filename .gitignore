@@ -13,4 +13,6 @@ weaviate_data/
 # Sqlite
 shortmem_db
 
+# .env
+.env
 

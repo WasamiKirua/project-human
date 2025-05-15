@@ -9,6 +9,7 @@ dependencies = [
     "numpy>=2.2.5",
     "openai>=1.78.1", # Still needed for local Ollama access
     "pocketflow>=0.0.2",
+    "python-dotenv>=1.1.0",
     "sqlite-vec>=0.1.6",
     "weaviate-client>=4.4.0",
 ]
