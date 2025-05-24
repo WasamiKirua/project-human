@@ -5,8 +5,8 @@ build/
 dist/
 wheels/
 *.egg-info
-whisper.cpp/
 redis/
+weaviate_data/
 
 # Virtual environments
 .venv

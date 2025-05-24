@@ -417,18 +417,38 @@ def simulate_transcription():
 async def on_user_wants_to_talk(key, value, old):
     """Handle GUI trigger for starting speech recognition"""
     if value == "True":
-        print("[STT] GUI triggered speech recognition")
+        print(f"[STT] 🎯 USER_WANTS_TO_TALK triggered: {key} = {value}")
+        print(f"[STT] 🔍 Current states check:")
+        
+        # Check all relevant states for debugging
+        ai_speaking = state.get_value("ai_speaking")
+        human_speaking = state.get_value("human_speaking") 
+        ai_thinking = state.get_value("ai_thinking")
+        stt_ready = state.get_value("stt_ready")
+        tts_ready = state.get_value("tts_ready")
+        
+        print(f"[STT]    ai_speaking: {ai_speaking}")
+        print(f"[STT]    human_speaking: {human_speaking}")
+        print(f"[STT]    ai_thinking: {ai_thinking}")
+        print(f"[STT]    stt_ready: {stt_ready}")
+        print(f"[STT]    tts_ready: {tts_ready}")
         
         # Reset the trigger
+        print("[STT] 🔄 Resetting user_wants_to_talk to False")
         await state.set("user_wants_to_talk", "False", source="stt", priority=10)
         
         # Check if AI is currently speaking
-        if state.get_value("ai_speaking") == "True":
-            print("[STT] AI is speaking, waiting...")
+        if ai_speaking == "True":
+            print("[STT] ❌ AI is speaking, cannot start listening now")
+            return
+            
+        # Check if human is already speaking
+        if human_speaking == "True":
+            print("[STT] ❌ Human already speaking, ignoring trigger")
             return
             
         # Start the speech recognition process
-        print("[STT] Starting speech recognition...")
+        print("[STT] ✅ Starting speech recognition...")
         await state.set("human_speaking", "True", source="stt", priority=10)
         
         # Use real transcription in a separate thread to avoid blocking
@@ -442,20 +462,29 @@ async def on_user_wants_to_talk(key, value, old):
                 executor, transcribe_async
             )
         
-        # Store the result
-        if transcript:
+        # Store the result and only proceed if we have a transcript
+        if transcript and transcript.strip():
             r.set(TRANSCRIPT_KEY, transcript)
             print(f"[STT] Final transcript: '{transcript}'")
+            
+            # Set flags only when we have actual content
+            print("[STT] Setting stt_ready = True")
+            await state.set("stt_ready", "True", source="stt", priority=20)  # Higher than LLM's 15
+            print("[STT] Setting human_speaking = False") 
+            await state.set("human_speaking", "False", source="stt", priority=10)
+            print("[STT] Speech recognition complete")
         else:
-            print("[STT] No transcript generated")
-            transcript = ""
-        
-        # Set flags
-        print("[STT] Setting stt_ready = True")
-        await state.set("stt_ready", "True", source="stt", priority=20)  # Higher than LLM's 15
-        print("[STT] Setting human_speaking = False") 
-        await state.set("human_speaking", "False", source="stt", priority=10)
-        print("[STT] Speech recognition complete")
+            print("[STT] No transcript generated - not triggering LLM")
+            print("[STT] Setting human_speaking = False") 
+            await state.set("human_speaking", "False", source="stt", priority=10)
+            
+            # Signal GUI that no speech was detected
+            await state.set("stt_ready", "False", source="stt", priority=20)
+            
+            print("[STT] Speech recognition aborted (no audio/transcript)")
+            
+            # Reset the user_wants_to_talk to allow new attempts
+            await state.set("user_wants_to_talk", "False", source="stt", priority=10)
         
 async def stt_listener():
     """Listen for user_wants_to_talk events"""

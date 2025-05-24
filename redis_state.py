@@ -50,20 +50,26 @@ class RedisState:
         if existing:
             existing_priority = int(existing.get("priority", 0))
             if priority < existing_priority:
-                print(f"[State] Skipped {key}: lower priority")
+                print(f"[State] ❌ Skipped {key}: lower priority ({priority} < {existing_priority})")
                 return False
 
         if not self._is_allowed(key, value, source, priority):
-            print(f"[State] Denied update for {key} from {source} due to rule")
+            print(f"[State] ❌ Denied update for {key} from {source} due to rule")
             return False
 
+        print(f"[State] ✅ Setting {key}={value} (source={source}, priority={priority})")
+        
         self.r.hset(full_key, mapping={
             "value": str(value),
             "source": source,
             "priority": priority,
             "timestamp": ts
         })
-        self.r.publish(self.pub_channel, f"{key}={value}")
+        
+        message = f"{key}={value}"
+        print(f"[State] 📡 Publishing: {message}")
+        self.r.publish(self.pub_channel, message)
+        
         return True
 
     def get_value(self, key: str) -> Any:
@@ -72,7 +78,16 @@ class RedisState:
 
     def set_value(self, key: str, value: Any, source: str = "system", priority: int = 1):
         # Synchronous version of set (for non-async components)
-        asyncio.run(self.set(key, value, source, priority))
+        print(f"[State] 🚀 set_value called: {key}={value}, source={source}, priority={priority}")
+        try:
+            result = asyncio.run(self.set(key, value, source, priority))
+            print(f"[State] 📊 set_value result: {result}")
+            return result
+        except Exception as e:
+            print(f"[State] ❌ Error in set_value: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     def subscribe(self, key: str, callback: Callable[[str, Any, Any], Any]):
         self.subscribers[key] = callback
@@ -82,15 +97,29 @@ class RedisState:
         pubsub.subscribe(self.pub_channel)
         print("[State] Listening to state pub/sub channel...")
 
-        for message in pubsub.listen():
-            if message["type"] != "message":
-                continue
-            data = message["data"]
-            if isinstance(data, bytes):
-                data = data.decode()
+        try:
+            for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                data = message["data"]
+                if isinstance(data, bytes):
+                    data = data.decode()
 
-            if "=" in data:
-                key, val = data.split("=", 1)
-                if key in self.subscribers:
-                    old = self.get_value(key)
-                    await self.subscribers[key](key, val, old)
+                if "=" in data:
+                    key, val = data.split("=", 1)
+                    print(f"[State] 📨 Received: {key}={val}")
+                    if key in self.subscribers:
+                        print(f"[State] 🎯 Calling callback for {key}")
+                        old = self.get_value(key)
+                        try:
+                            await self.subscribers[key](key, val, old)
+                        except Exception as e:
+                            print(f"[State] ❌ Error in callback for {key}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                    else:
+                        print(f"[State] 🔍 No subscriber for {key}")
+        except Exception as e:
+            print(f"[State] ❌ Error in listen loop: {e}")
+            import traceback
+            traceback.print_exc()

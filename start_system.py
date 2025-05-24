@@ -20,10 +20,14 @@ def main():
     print("   GUI should show: 'Status: Ready 🌸'")
     print("\n🎯 Test Flow:")
     print("   Click '🎤 Start Talking' → Watch console logs → See status changes")
+    print("\n🔄 NEW: Continuous Mode:")
+    print("   Click '🔄 Enable Continuous Mode' for hands-free conversations!")
+    print("   System will auto-restart listening after each AI response")
     print("\n🔧 Troubleshooting:")
     print("   - Ensure Redis is running (port 6379, password 'rhost21')")
     print("   - Check that all components stay running (don't exit)")
     print("   - Look for '[State] Loaded rules' message")
+    print("   - Use '🛑 Emergency Stop' if continuous mode gets stuck")
 
 if __name__ == "__main__":
     main()

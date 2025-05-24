@@ -20,6 +20,7 @@ class SignalBridge(QObject):
     update_button = Signal(str, bool)  # text, enabled
     start_animation = Signal()
     stop_animation = Signal()
+    start_auto_listening = Signal()  # New signal for auto-restart
 
 bridge = SignalBridge()
 
@@ -72,13 +73,20 @@ class MicControlApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Kawaii Mic Assistant")
-        self.resize(400, 300)
+        self.resize(400, 350)
         self.current_state = "ready"
         self.executor = ThreadPoolExecutor(max_workers=1)
+        self.continuous_mode = True  # Default to continuous mode
+        
+        # Timer for delay after AI speech in continuous mode
+        self.continuous_timer = QTimer(self)
+        self.continuous_timer.setSingleShot(True)
+        self.continuous_timer.timeout.connect(self.auto_start_listening)
 
         # UI Components
-        self.status_label = QLabel("Status: Ready 🌸", self)
+        self.status_label = QLabel("Status: Ready (Continuous) 🌸", self)
         self.status_label.setAlignment(Qt.AlignCenter)
+        
         self.talk_button = QPushButton("🎤 Start Talking", self)
         self.talk_button.clicked.connect(self.start_talking)
 
@@ -96,26 +104,75 @@ class MicControlApp(QWidget):
         bridge.update_button.connect(self.update_button, Qt.QueuedConnection)
         bridge.start_animation.connect(self.start_wave_animation, Qt.QueuedConnection)
         bridge.stop_animation.connect(self.stop_wave_animation, Qt.QueuedConnection)
+        bridge.start_auto_listening.connect(self.start_auto_listening_delayed, Qt.QueuedConnection)
+
+    def start_auto_listening_delayed(self):
+        """Start auto-listening with delay - called from main thread via signal"""
+        print("[GUI] 🎯 Auto-restart signal received in main thread")
+        self.continuous_timer.start(2000)
+
+    def check_processing_timeout(self):
+        """Check if we're still stuck in processing state and reset if needed"""
+        if self.current_state == "processing":
+            print("[GUI] ⏰ Processing timeout - resetting to ready (likely no transcript)")
+            self.current_state = "ready"
+            bridge.update_status.emit("Status: Ready (No speech detected) 🌸")
+            bridge.update_button.emit("🎤 Start Talking", True)
+            bridge.stop_animation.emit()
+
+    def auto_start_listening(self):
+        """Automatically start listening in continuous mode"""
+        if self.continuous_mode and self.current_state == "ready":
+            print("[GUI] Auto-starting listening in continuous mode")
+            bridge.update_status.emit("Status: Auto-listening... 🔄")
+            self.start_talking()
 
     def start_talking(self):
         """Trigger the STT process through Redis state"""
+        print(f"[GUI] 🎙️ start_talking() called - State: {self.current_state}")
+        
         if self.current_state == "ready":
             self.current_state = "requesting"
-            bridge.update_status.emit("Status: Starting... ⚡")
+            print("[GUI] 📢 Starting listening")
+            bridge.update_status.emit("Status: Listening... ⚡")
             bridge.update_button.emit("🔄 Starting...", False)
             bridge.start_animation.emit()
             
             # Use RedisState to trigger STT with proper source and priority
             # Run in executor to avoid blocking the UI
             self.executor.submit(self._trigger_stt)
+        else:
+            print(f"[GUI] ❌ Cannot start talking - wrong state: {self.current_state}")
 
     def _trigger_stt(self):
         """Helper method to trigger STT asynchronously"""
         try:
-            state.set_value("user_wants_to_talk", "True", source="gui", priority=10)
-            print("[GUI] Triggered user_wants_to_talk")
+            print("[GUI] 🚀 _trigger_stt called")
+            print("[GUI] 🔍 Checking current Redis state before trigger...")
+            
+            # Check current state
+            current_user_wants = state.get_value("user_wants_to_talk")
+            current_ai_speaking = state.get_value("ai_speaking")
+            current_human_speaking = state.get_value("human_speaking")
+            
+            print(f"[GUI]    user_wants_to_talk: {current_user_wants}")
+            print(f"[GUI]    ai_speaking: {current_ai_speaking}")
+            print(f"[GUI]    human_speaking: {current_human_speaking}")
+            
+            # Use higher priority than STT component (which uses 20)
+            print("[GUI] 🚀 Setting user_wants_to_talk = True with source=gui, priority=25")
+            result = state.set_value("user_wants_to_talk", "True", source="gui", priority=25)
+            print(f"[GUI] 📊 State update result: {result}")
+            
+            if result:
+                print("[GUI] ✅ Successfully triggered user_wants_to_talk")
+            else:
+                print("[GUI] ❌ Failed to set user_wants_to_talk - check rules")
+                
         except Exception as e:
-            print(f"[GUI] Error triggering STT: {e}")
+            print(f"[GUI] ❌ Error triggering STT: {e}")
+            import traceback
+            traceback.print_exc()
             # Reset to ready state on error
             bridge.update_status.emit("Status: Error - Ready 🌸")
             bridge.update_button.emit("🎤 Start Talking", True)
@@ -149,9 +206,12 @@ class MicControlApp(QWidget):
                 bridge.update_button.emit("🔄 Speaking...", False)
                 bridge.start_animation.emit()
             else:
-                self.current_state = "processing"
-                bridge.update_status.emit("Status: Processing... ⚡")
-                bridge.update_button.emit("🔄 Processing...", False)
+                # Check if we should go to processing or back to ready
+                if self.current_state == "speaking":
+                    # Just finished speaking - check if STT will trigger LLM
+                    self.current_state = "processing"
+                    bridge.update_status.emit("Status: Processing... ⚡")
+                    bridge.update_button.emit("🔄 Processing...", False)
                 
         elif key == "ai_thinking":
             if value == "True":
@@ -167,17 +227,31 @@ class MicControlApp(QWidget):
                 bridge.update_button.emit("🔄 AI Speaking...", False)
                 bridge.start_animation.emit()
             else:
-                # AI finished speaking, return to ready state
+                # AI finished speaking - auto-restart listening in continuous mode
+                print(f"[GUI] 🎤 AI finished speaking. Emitting auto-restart signal")
                 self.current_state = "ready"
-                bridge.update_status.emit("Status: Ready 🌸")
-                bridge.update_button.emit("🎤 Start Talking", True)
+                bridge.update_status.emit("Status: AI Done - Auto-listening soon... 🔄")
+                bridge.update_button.emit("🔄 Auto-listening...", False)
                 bridge.stop_animation.emit()
+                
+                # Use signal to safely trigger timer from main thread
+                bridge.start_auto_listening.emit()
                 
         elif key == "stt_ready":
             if value == "True":
                 self.current_state = "stt_complete"
                 bridge.update_status.emit("Status: Speech Recognized ✅")
                 # Keep button disabled, waiting for LLM
+            elif value == "False" and self.current_state == "processing":
+                # STT explicitly saying no speech detected
+                print("[GUI] 🚫 STT reports no speech detected - auto-restarting in continuous mode")
+                self.current_state = "ready"
+                bridge.update_status.emit("Status: No speech - Auto-listening soon... 🔄")
+                bridge.update_button.emit("🔄 Auto-listening...", False)
+                bridge.stop_animation.emit()
+                
+                # Auto-restart listening in continuous mode after brief delay
+                bridge.start_auto_listening.emit()
                 
         elif key == "tts_ready":
             if value == "True":
