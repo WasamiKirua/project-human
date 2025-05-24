@@ -29,35 +29,27 @@ def play_audio():
 
 # Async listener for TTS readiness signal
 async def on_tts_ready(key, value, old):
-    """Handle TTS readiness signal from LLM"""
+    """Handle TTS readiness signal from LLM - FAKE VERSION"""
     if value == "True":
         try:
             print("[TTS] Detected 'tts_ready' = True")
 
-            text = r.get(TTS_RESPONSE_KEY)
-            if not text:
-                print("[TTS] No LLM reply available. Skipping TTS.")
-                # Clear the tts_ready flag anyway
-                await state.set("tts_ready", "False", source="tts", priority=3)
-                return
-
-            # Set ai_speaking state
+            # Set ai_speaking state (fake TTS starting)
             await state.set("ai_speaking", "True", source="tts", priority=3)
+            print("[TTS] Fake TTS: AI is now 'speaking' (simulated)")
 
-            # Generate and play audio
-            generate_audio(text)
-            success = play_audio()
+            # Simulate TTS processing time
+            import asyncio
+            await asyncio.sleep(2)  # Fake 2 seconds of "speech"
+            print("[TTS] Fake TTS: AI finished 'speaking' (simulated)")
 
-            # Reset ai_speaking flag
+            # Reset ai_speaking flag (fake TTS finished)
             await state.set("ai_speaking", "False", source="tts", priority=3)
 
             # Clear tts_ready signal
             await state.set("tts_ready", "False", source="tts", priority=3)
 
-            # Clear LLM reply to avoid reuse
-            if success:
-                r.delete(TTS_RESPONSE_KEY)
-                print("[TTS] Audio playback completed successfully.")
+            print("[TTS] Fake TTS completed - ready for next interaction")
 
         except Exception as e:
             print(f"[TTS] Error occurred: {e}")

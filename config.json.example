@@ -37,5 +37,19 @@
       "amplitude_threshold": 0.05,
       "silence_duration": 2.0,
       "min_audio_length": 1.0
+    },
+
+    "api_keys": {
+      "openai_api_key": "",
+      "groq_api_key": ""
+    },
+
+    "memory": {
+      "db_store": "shortmemdb",
+      "provider": "weaviate",
+      "collection_name": "longtermdb",
+      "cluster_url": "http://localhost:8080",
+      "embed_provider": "huggingface",
+      "embed_mode": "multi-qa-MiniLM-L6-cos-v1"
     }
   }

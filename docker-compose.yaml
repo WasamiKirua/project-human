@@ -4,7 +4,7 @@ services:
     restart: always
     ports:
       - 0.0.0.0:6379:6379
-    command: redis-server --loglevel warning --requirepass rhost21
+    command: redis-server --save "" --appendonly no --loglevel warning --requirepass rhost21
     volumes:
       - ./redis:/data
   weaviate:
@@ -40,6 +40,7 @@ services:
     image: cr.weaviate.io/semitechnologies/contextionary:en0.16.0-v1.2.1
     ports:
     - 9999:9999
+
 volumes:
   redis:
     driver: local

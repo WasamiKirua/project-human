@@ -14,6 +14,7 @@ whisper.cpp/
 
 # DS_Store
 .DS_Store
+shortmemdb
 
 # Configuration sensible
 config.json

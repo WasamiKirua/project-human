@@ -3,6 +3,7 @@ import random
 import redis
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from utils.sqlite_vector import create_db
 
 from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel
 from PySide6.QtCore import QTimer, Qt, Signal, QObject
@@ -284,6 +285,9 @@ def redis_listener():
         print(f"[GUI] Error in Redis listener: {e}")
 
 def main():
+    # Create db file and collection
+    create_db()
+
     # Start the Redis listener in a separate thread
     redis_thread = threading.Thread(target=redis_listener, daemon=True)
     redis_thread.start()
