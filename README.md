@@ -1,5 +1,20 @@
 # Project Human Redis - AI Assistant
 
+## 🚧✨ Under Construction! ✨🚧
+
+> 🛠️💖 This project is currently in **magical development mode**!  
+> We're sprinkling some ✨kawaii code dust✨ and adding more cuteness every day! 🐣🎀
+
+Please bear with us while we make things super adorable and functional! 🌈🌸
+
+---
+
+🌟 **Stay tuned for updates**!  
+🍓 Feel free to ⭐ star the repo and check back soon! 💌
+
+---
+
+
 A multi-component AI assistant system with speech-to-text, text-to-speech, language model processing, and a graphical user interface. The system uses Redis for state management, Weaviate for vector storage, and Whisper for speech recognition.
 
 ## 🏗️ Architecture

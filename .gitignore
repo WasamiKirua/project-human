@@ -24,3 +24,6 @@ weaviate_data/
 
 # Configuration sensible
 config.json
+
+# Logs
+logs/

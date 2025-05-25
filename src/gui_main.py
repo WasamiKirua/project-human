@@ -3,16 +3,19 @@ import random
 import redis
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from utils.sqlite_vector import create_db
 
 from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel
 from PySide6.QtCore import QTimer, Qt, Signal, QObject
 from PySide6.QtGui import QPainter, QColor
 from redis_state import RedisState
+from utils.sqlite_vector import SQLiteComponent
 
 # Redis state
 r = redis.Redis(host='localhost', port=6379, password='rhost21', decode_responses=True)
 state = RedisState(r)
+sqlite_utils = SQLiteComponent()
+
+
 CHANNEL = "channel:state"
 
 # Signal bridge for thread-safe Qt updates
@@ -286,7 +289,7 @@ def redis_listener():
 
 def main():
     # Create db file and collection
-    create_db()
+    sqlite_utils.create_db()
 
     # Start the Redis listener in a separate thread
     redis_thread = threading.Thread(target=redis_listener, daemon=True)

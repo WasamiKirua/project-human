@@ -10,14 +10,12 @@ from redis_state import RedisState
 from aiohttp import web
 from openai import AsyncOpenAI
 from utils.prompts import CHARACTER_CARD_PROMPT
-
-
-# Set your OpenAI API key
-# openai.api_key = os.getenv("OPENAI_API_KEY")  # Uncomment when you have API key
+from utils.sqlite_vector import SQLiteComponent
 
 # Initialize Redis and state manager
 r = redis.Redis(decode_responses=True, host='localhost', port=6379, password='rhost21')
 state = RedisState(r)
+sqlite_utils = SQLiteComponent()
 
 class LLMComponent:
     def __init__(self):
@@ -88,9 +86,12 @@ class LLMComponent:
         """Build context from multiple memory sources"""
         print("[LLM] 🧠 Building context from memory systems...")
         
+        #TODO: Implement short memory retriever
+        #TODO: Evaluate effectiveness because we already have the IN Memory 20 last exchanges
         # Fake SQLite recent history simulation
         recent_history = await self.get_fake_recent_history()
         
+        #TODO; Implement long term memory semantic retriever
         # Fake Weaviate semantic search simulation
         relevant_memories = await self.get_fake_relevant_memories(current_transcript)
         
@@ -109,12 +110,13 @@ class LLMComponent:
     async def get_fake_recent_history(self):
         """Fake SQLite database - recent conversations"""
         # Simulate recent conversation history
-        fake_recent = [
-            {"role": "user", "content": "What's the weather like?"},
-            {"role": "assistant", "content": "I'd need your location to check the weather."},
-            {"role": "user", "content": "I'm in Munich"},
-            {"role": "assistant", "content": "Munich typically has mild weather this time of year."}
-        ]
+        fake_recent = []
+        # fake_recent = [
+        #     {"role": "user", "content": "What's the weather like?"},
+        #     {"role": "assistant", "content": "I'd need your location to check the weather."},
+        #     {"role": "user", "content": "I'm in Munich"},
+        #     {"role": "assistant", "content": "Munich typically has mild weather this time of year."}
+        # ]
         
         # Return only last 3 for context (simulate LIMIT 3)
         return fake_recent[-3:]
@@ -122,13 +124,14 @@ class LLMComponent:
     async def get_fake_relevant_memories(self, query):
         """Fake Weaviate semantic search"""
         # Simulate semantic search based on keywords
-        all_memories = [
-            {"content": "User prefers detailed explanations", "position": 0},
-            {"content": "User is interested in technology topics", "position": 1},
-            {"content": "User lives in Munich, Germany", "position": 2},
-            {"content": "User asks about weather frequently", "position": 3},
-            {"content": "User prefers casual conversation style", "position": 4}
-        ]
+        all_memories = []
+        # all_memories = [
+        #     {"content": "User prefers detailed explanations", "position": 0},
+        #     {"content": "User is interested in technology topics", "position": 1},
+        #     {"content": "User lives in Munich, Germany", "position": 2},
+        #     {"content": "User asks about weather frequently", "position": 3},
+        #     {"content": "User prefers casual conversation style", "position": 4}
+        # ]
         
         # Fake long term memory based on simple keyword matching
         relevant = []
@@ -183,9 +186,6 @@ class LLMComponent:
         
         # Add current user input
         messages.append({"role": "user", "content": transcript})
-        
-        # For now, simulate OpenAI API call (replace with real call when you have API key)
-        # response = await self.simulate_openai_call(messages)
 
         client = AsyncOpenAI(base_url=f'http://localhost:{port}/v1', api_key=api_key)
         
@@ -196,8 +196,6 @@ class LLMComponent:
             temperature=0.7
         )
         return response.choices[0].message.content
-        
-        #return response
     
     def build_system_prompt(self, context):
         """Build system prompt with context information"""
@@ -217,26 +215,6 @@ class LLMComponent:
         
         return base_prompt
     
-    async def simulate_openai_call(self, messages):
-        """Simulate OpenAI API call for testing"""
-        # Simulate API delay
-        await asyncio.sleep(1)
-        
-        # Get the user's message
-        user_message = messages[-1]["content"]
-        
-        # Simple response generation based on keywords
-        if any(word in user_message.lower() for word in ["hello", "hi", "hey"]):
-            return f"Hello! Nice to hear from you. How can I help you today?"
-        elif any(word in user_message.lower() for word in ["weather", "temperature"]):
-            return f"I'd be happy to help with weather information. Since you're in Munich, I can tell you that the weather there is typically quite pleasant this time of year!"
-        elif any(word in user_message.lower() for word in ["how", "are", "you"]):
-            return f"I'm doing great, thank you for asking! I'm here and ready to help with whatever you need."
-        elif any(word in user_message.lower() for word in ["time", "what time"]):
-            return f"I don't have access to real-time information, but I can help you with time-related questions if you'd like!"
-        else:
-            return f"Thanks for sharing that with me! I heard you say: '{user_message}'. How can I help you with that?"
-    
     async def store_conversation(self, user_input, ai_response):
         """Store conversation in memory systems"""
         print("[LLM] 💾 Storing conversation in memory systems...")
@@ -251,33 +229,25 @@ class LLMComponent:
         if len(self.conversation_history) > 40:  # 20 exchanges * 2 messages each
             self.conversation_history = self.conversation_history[-40:]
         
-        #TODO: Memory implementation
         # Fake SQLite storage simulation
-        # await self.store_in_fake_sqlite(user_input, ai_response, timestamp)
+        await self.store_in_sqlite(user_input, ai_response)
         
+        #TODO: Evaluate and eventually implement it
         # Fake Weaviate storage simulation
         # await self.store_in_fake_weaviate(user_input, ai_response, timestamp)
         
         print("[LLM] ✅ Conversation stored in all memory systems")
     
-    async def store_in_fake_sqlite(self, user_input, ai_response, timestamp):
-        """Fake SQLite storage for recent history"""
-        # Simulate storing in SQLite database
-        conversation_entry = {
-            "id": len(self.short_term_memory) + 1,
-            "user_input": user_input,
-            "ai_response": ai_response,
-            "timestamp": timestamp.isoformat(),
-            "session_id": self.session_start.isoformat()
-        }
+    async def store_in_sqlite(self, user_input, ai_response):
+        """SQLite storage for conversations"""
+        sqlite_utils.store_conversations(user_input, ai_response)
         
-        self.short_term_memory.append(conversation_entry)
-        
+        ### TODO Implement SQLite Cleanup
         # Keep only last 100 entries (simulate database cleanup)
-        if len(self.short_term_memory) > 100:
-            self.short_term_memory = self.short_term_memory[-100:]
+        # if len(self.short_term_memory) > 100:
+        #     self.short_term_memory = self.short_term_memory[-100:]
         
-        print(f"[LLM] 📝 Stored in fake SQLite: {len(self.short_term_memory)} total entries")
+        print(f"[LLM] 📝 Stored in SQLite: User and Ai Conversation")
     
     async def store_in_fake_weaviate(self, user_input, ai_response, timestamp):
         """Fake Weaviate storage for semantic search"""
