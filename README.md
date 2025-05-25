@@ -3,9 +3,9 @@
 ## 🚧✨ Under Construction! ✨🚧
 
 > 🛠️💖 This project is currently in **magical development mode**!  
-> We're sprinkling some ✨kawaii code dust✨ and adding more cuteness every day! 🐣🎀
+> I'm sprinkling some ✨kawaii code dust✨ and adding more cuteness every day! 🐣🎀
 
-Please bear with us while we make things super adorable and functional! 🌈🌸
+Please bear with me while I make things super adorable and functional! 🌈🌸
 
 ---
 
