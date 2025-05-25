@@ -5,16 +5,22 @@ build/
 dist/
 wheels/
 *.egg-info
-redis/
-weaviate_data/
+
+# Test files
+test_*
+
+# Whisper.cpp bins and models
 whisper.cpp/
 
 # Virtual environments
-.venv
+.venv/
+venv/
 
-# DS_Store
+# DS_Store and Memory
 .DS_Store
 shortmemdb
+redis/
+weaviate_data/
 
 # Configuration sensible
 config.json
