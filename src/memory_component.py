@@ -340,9 +340,44 @@ class MemoryComponent:
 
     async def store_in_weaviate(self, user_input: str, ai_response: str, memory_content: str, eval_result: str) -> bool:
         """Store important memory in Weaviate using your existing patterns"""
-        if not self.weaviate_collection:
-            print("[Memory] ❌ Weaviate collection not available for storage")
+        print(f"[Memory] 🔍 Debug: weaviate_client={self.weaviate_client is not None}, weaviate_collection={self.weaviate_collection is not None}")
+        
+        # Check if collection object exists (not None)
+        if self.weaviate_collection is None:
+            print(f"[Memory] ❌ Weaviate collection is None")
             return False
+        
+        # Try to test the collection with a simple operation (this is the real test)
+        try:
+            # Test if collection is actually working
+            test_count = self.weaviate_collection.aggregate.over_all(total_count=True)
+            print(f"[Memory] ✅ Collection test successful - {test_count.total_count} items")
+        except Exception as test_error:
+            print(f"[Memory] ❌ Collection test failed: {test_error}")
+            print("[Memory] 🔄 Attempting to reinitialize Weaviate connection...")
+            
+            # Close old connection properly before reinitializing
+            try:
+                if hasattr(self, 'weaviate_client') and self.weaviate_client:
+                    self.weaviate_client.close()
+                    print("[Memory] 🔒 Closed old Weaviate connection")
+            except:
+                pass
+            
+            # Reinitialize
+            try:
+                self.init_weaviate()
+                if self.weaviate_collection:
+                    print("[Memory] ✅ Weaviate reinitialized successfully")
+                    # Test again
+                    test_count = self.weaviate_collection.aggregate.over_all(total_count=True)
+                    print(f"[Memory] ✅ Reinitialized collection test successful - {test_count.total_count} items")
+                else:
+                    print("[Memory] ❌ Weaviate reinitialization failed")
+                    return False
+            except Exception as e:
+                print(f"[Memory] ❌ Failed to reinitialize Weaviate: {e}")
+                return False
             
         try:
             # Get current count for position (following your pattern)
