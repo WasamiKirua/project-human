@@ -46,10 +46,31 @@
 
     "memory": {
       "db_store": "shortmemdb",
-      "provider": "weaviate",
-      "collection_name": "longtermdb",
-      "cluster_url": "http://localhost:8080",
-      "embed_provider": "huggingface",
-      "embed_mode": "multi-qa-MiniLM-L6-cos-v1"
+      "collection_name": "ConversationMemory",
+      "cluster_url": "http://localhost:8080"
+    },
+
+    "lorebook": {
+      "creator": "",
+      "likes": "",
+      "hobbies": "",
+      "mangas": "",
+      "gaming": ""
+    },
+
+    "llm": {
+      "llama_cpp": {
+        "_comment": "Set to true if want to use",
+        "enabled": "true",
+        "port": "8084",
+        "api_key": "not-needed",
+        "model": "local-model"
+      },
+
+      "ollama": {
+        "_comment": "Set to true if want to use",
+        "port": "11434",
+        "enabled": "false"
+      }
     }
   }
