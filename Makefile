@@ -78,19 +78,26 @@ stop-services:
 start-whisper:
 	@echo "Starting Whisper server..."
 	@mkdir -p logs
-	@cd whisper.cpp && \
-	./build/bin/whisper-server \
-		--model models/ggml-base.en.bin \
+	@nohup ./whisper.cpp/build/bin/whisper-server \
+		--model ./whisper.cpp/models/ggml-base.en.bin \
 		--host 0.0.0.0 \
-		--port 8081 & \
-	echo $$! > $(CURDIR)/logs/whisper.pid; \
-	echo "Whisper server started (PID: $$(cat $(CURDIR)/logs/whisper.pid))"
+		--port 8081 > logs/whisper.log 2>&1 & \
+	echo $$! > logs/whisper.pid && \
+	echo "Whisper server started (PID: $$(cat logs/whisper.pid))"
 
 stop-whisper:
+	@echo "Stopping Whisper server..."
 	@if [ -f logs/whisper.pid ]; then \
-		echo "Stopping Whisper server..."; \
-		kill $$(cat logs/whisper.pid) 2>/dev/null || true; \
+		PID=$$(cat logs/whisper.pid); \
+		if kill -0 $$PID 2>/dev/null; then \
+			kill $$PID && echo "Whisper server stopped (PID: $$PID)"; \
+		else \
+			echo "Whisper server not running (stale PID file)"; \
+		fi; \
 		rm -f logs/whisper.pid; \
+	else \
+		echo "No Whisper PID file found"; \
+		pkill -f "whisper-server" 2>/dev/null && echo "Killed any running whisper-server processes" || true; \
 	fi
 
 # Check services
