@@ -25,11 +25,12 @@ class MemoryComponent:
         print(f"[Memory] Loaded config: {self.config}")
         
         # Validate and extract config values with defaults
-        memory_config, api_keys = self.config  # Unpack tuple properly
+        memory_config, api_keys, lorebook = self.config  # Unpack tuple properly
         
         self.db_file = memory_config.get('db_store', 'default_memory.db')
         self.weaviate_collection_name = memory_config.get('collection_name', 'ConversationMemory')
         self.groq_key = api_keys.get('groq_api_key', None)
+        self.lorebook_elements = lorebook
         
         # Verify API key is loaded (don't print the full key for security)
         if self.groq_key:
@@ -43,11 +44,13 @@ class MemoryComponent:
         # Initialize Weaviate connection (set to None initially, will be set by init_weaviate)
         self.init_weaviate()
         self.create_db()
+        self.inject_lorebook()
 
     def load_config(self):
         config_path = 'config.json'
-        memory_config = {}  # Initialize with default
-        api_keys = {}       # Initialize with default
+        memory_config = {} # Default
+        api_keys = {} # Default
+        lorebook = {} # Default
         
         if os.path.exists(config_path):
             try:
@@ -55,6 +58,7 @@ class MemoryComponent:
                     config = json.load(f)
                     memory_config = config.get("memory", {})
                     api_keys = config.get("api_keys", {})
+                    lorebook = config.get("lorebook", {})
             except Exception as e:
                 print(f"[Memory] ❌ Error loading config: {e}")
                 # Use defaults if config loading fails
@@ -67,12 +71,13 @@ class MemoryComponent:
                         config = json.load(f)
                         memory_config = config.get("memory", {})
                         api_keys = config.get("api_keys", {})
+                        lorebook = config.get("lorebook", {})
                 except Exception as e:
                     print(f"[Memory] ❌ Error loading config from parent dir: {e}")
             else:
                 print(f"[Memory] ⚠️ Config file not found in current or parent directory")
             
-        return memory_config, api_keys
+        return memory_config, api_keys, lorebook
 
     def init_weaviate(self):
         """Initialize Weaviate connection using your existing pattern"""
@@ -206,7 +211,49 @@ class MemoryComponent:
         except Exception as create_error:
             print(f"[GUI] --> [SQLite] ❌ Error with SQLite database: {str(create_error)}")
             return None
-        
+
+    def inject_lorebook(self):
+        # Load Static Lorebook items abd store them to weaviate
+        lock_file = 'logs/lorebook.lock'
+        if os.path.exists(lock_file):
+            print(f"[Memory Lorebook] ✅ Lorebook has already being imported into Weaviate!")
+        else:
+            print("[Memory Lorebook] 💭 Proceeding with Lorebook Injection ...")
+            try:        
+                for k, v in self.lorebook_elements.items():
+                    if not self.is_weaviate_available():
+                        print("[Memory Lorebook] ❌ Weaviate collection not available for semantic search")
+                        return []
+                    try:
+                        results = self.weaviate_collection.aggregate.over_all(total_count=True)
+                        position = results.total_count
+                    except Exception as e:
+                        print(f"[Memory Lorebook] Warning: Could not get count, using position 0: {e}")
+                        position = 0
+
+                    memory_type = self.classify_memory_type(v)
+
+                    # Create memory object following your schema
+                    memory_object = {
+                        "content": v,
+                        "memoryType": memory_type,
+                        "timestamp": datetime.now().isoformat(),
+                        "importanceScore": 1.0,
+                        "originalUserInput": "",
+                        "originalAiResponse": "",
+                        "position": position
+                    }
+                    # Insert using your existing pattern
+                    self.weaviate_collection.data.insert(properties=memory_object)
+
+                    print(f"[Memory Lorebook] ✅ Stored in Weaviate: '{v}' (type: {memory_type}, position: {position})")
+                with open('logs/lorebook.lock', 'w') as lock_file:
+                    lock_file.write('')
+                    print(f"[Memory Lorebook] ✅ Lorebook imported and Lock file created!")
+            except Exception as e:
+                print(f"[Memory Lorebook] ❌ Failed to store in Weaviate: {e}")
+                return False
+
     def store_conversations(self, user_input, ai_response):
         """Store conversation in SQLite and evaluate for Weaviate storage"""
         # Store in SQLite (data warehouse) - synchronous

@@ -123,34 +123,6 @@ class LLMComponent:
             print(f"[LLM] ⚠️ Semantic memory retrieval failed: {e}")
             # Fallback to empty list if memory system fails
             return []
-
-    # async def get_fake_relevant_memories(self, query):
-    #     """Fake Weaviate semantic search"""
-    #     # Simulate semantic search based on keywords
-    #     all_memories = []
-    #     # all_memories = [
-    #     #     {"content": "User prefers detailed explanations", "position": 0},
-    #     #     {"content": "User is interested in technology topics", "position": 1},
-    #     #     {"content": "User lives in Munich, Germany", "position": 2},
-    #     #     {"content": "User asks about weather frequently", "position": 3},
-    #     #     {"content": "User prefers casual conversation style", "position": 4}
-    #     # ]
-        
-    #     # Fake long term memory based on simple keyword matching
-    #     relevant = []
-    #     query_lower = query.lower()
-        
-    #     for memory in all_memories:
-    #         # Simple scoring based on keyword overlap
-    #         if any(word in query_lower for word in ["weather", "munich", "location"]):
-    #             if "munich" in memory["content"].lower() or "weather" in memory["content"].lower():
-    #                 relevant.append(memory)
-    #         elif any(word in query_lower for word in ["how", "what", "explain"]):
-    #             if "detailed" in memory["content"].lower():
-    #                 relevant.append(memory)
-        
-    #     # Return top 3 most relevant
-    #     return sorted(relevant, key=lambda x: x["position"], reverse=True)[:3]
     
     async def generate_response(self, transcript, context):
         """Generate AI response using OpenAI API with full context"""
