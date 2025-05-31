@@ -208,16 +208,17 @@ class SileroVADAudioRecorder:
             print(f"[STT] Error starting recording: {e}")
             return False
         
-    def wait_for_recording_completion(self, timeout=30):
+    def wait_for_recording_completion(self, timeout=60):
         """Wait for recording to complete and return audio data"""
-        print("[STT] Waiting for recording completion...")
+        print(f"[STT] Waiting for recording completion (timeout: {timeout}s)...")
         
         if self.recording_complete.wait(timeout=timeout):
             print("[STT] Recording completed successfully")
             with self.audio_lock:
                 return self.completed_audio
         else:
-            print("[STT] Recording timed out")
+            print(f"[STT] Recording wait timed out after {timeout}s")
+            # Don't return None immediately - let caller check for captured audio
             return None
     
     def stop_recording(self):
@@ -295,10 +296,13 @@ def transcribe_with_whisper_server(audio_file_path):
 def record_audio_with_silero_vad():
     """Record audio using Silero VAD for real-time speech detection"""
     sampling_rate = json_config['sampling_rate']
+    max_duration = json_config.get('max_recording_duration', 120)  # Default 2 minutes
+    
     if not AUDIO_AVAILABLE:
         return None
     
     print("[STT] Starting Silero VAD recording...")
+    print(f"[STT] Maximum recording duration: {max_duration} seconds")
     recorder = SileroVADAudioRecorder()
     
     if not recorder.start_recording():
@@ -307,24 +311,47 @@ def record_audio_with_silero_vad():
     print("[STT] Listening with Silero VAD... speak now!")
     
     try:
-        audio_data = recorder.wait_for_recording_completion(timeout=30)
+        # Wait for recording completion with configurable timeout
+        audio_data = recorder.wait_for_recording_completion(timeout=max_duration)
         
         if audio_data:
             duration_seconds = len(audio_data) / sampling_rate
             print(f"[STT] Successfully captured {duration_seconds:.2f} seconds of audio")
             return audio_data
         else:
-            print("[STT] No audio data captured")
-            return None
+            print("[STT] Wait timed out, checking for captured audio...")
+            # Even if wait timed out, check if audio was captured
+            final_audio = recorder.stop_recording()
+            if final_audio and len(final_audio) > 0:
+                duration_seconds = len(final_audio) / sampling_rate
+                print(f"[STT] ✅ Recovered {duration_seconds:.2f} seconds of audio after timeout")
+                return final_audio
+            else:
+                print("[STT] No audio data captured")
+                return None
             
     except KeyboardInterrupt:
         print("[STT] Recording interrupted by user")
+        # Still try to recover any captured audio
+        final_audio = recorder.stop_recording()
+        if final_audio and len(final_audio) > 0:
+            print("[STT] Recovered audio after interruption")
+            return final_audio
         return None
     except Exception as e:
         print(f"[STT] Error during recording: {e}")
+        # Still try to recover any captured audio
+        final_audio = recorder.stop_recording()
+        if final_audio and len(final_audio) > 0:
+            print("[STT] Recovered audio after error")
+            return final_audio
         return None
     finally:
-        recorder.stop_recording()
+        # Ensure recording is stopped
+        try:
+            recorder.stop_recording()
+        except:
+            pass
 
 def real_transcription():
     """Real speech-to-text using Silero VAD and Whisper.cpp server"""
@@ -453,6 +480,7 @@ async def stt_listener():
     vad_threshold = json_config['vad_threshold']
     silence_duration = json_config['silence_duration']
     min_audio_length = json_config['min_audio_length']
+    max_recording_duration = json_config.get('max_recording_duration', 120)
 
     state.subscribe("user_wants_to_talk", on_user_wants_to_talk)
     
@@ -473,11 +501,12 @@ async def stt_listener():
     if silero_initialized:
         print(f"[STT] VAD Configuration:")
         print(f"[STT]   - Sampling Rate: {sampling_rate} Hz")
-        print(f"[STT]   - Chunk Size: {chunk_size} samples (32ms)")
+        print(f"[STT]   - Chunk Size: {chunk_size} samples ({chunk_size/sampling_rate*1000:.0f}ms)")
         print(f"[STT]   - Silero VAD Threshold: {vad_threshold}")
         print(f"[STT]   - Fallback Amplitude Threshold: {amplitude_threshold}")
         print(f"[STT]   - Silence Duration: {silence_duration}s")
         print(f"[STT]   - Min Audio Length: {min_audio_length}s")
+        print(f"[STT]   - Max Recording Duration: {max_recording_duration}s")
     
     print("[STT] Listening for GUI triggers and state changes...")
     print("[STT] Using HTTP API to communicate with LLM component...")

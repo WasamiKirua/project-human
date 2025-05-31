@@ -27,16 +27,17 @@
     },
 
     "stt": {
-      "whisper_server_url": "http://127.0.0.1:8081",
-      "whisper_api_url": "http://127.0.0.1:8081/inference",
-      "whisper_health_url": "http://127.0.0.1:8081/health",
+      "whisper_server_url": "http://localhost:8081",
+      "whisper_api_url": "http://localhost:8081/inference",
+      "whisper_health_url": "http://localhost:8081/health",
       "sampling_rate": 16000,
       "channels": 1,
       "chunk_size": 512,
       "vad_threshold": 0.5,
       "amplitude_threshold": 0.05,
       "silence_duration": 2.0,
-      "min_audio_length": 1.0
+      "min_audio_length": 1.0,
+      "max_recording_duration": 180
     },
 
     "api_keys": {

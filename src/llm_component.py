@@ -9,13 +9,12 @@ from datetime import datetime
 from redis_state import RedisState
 from aiohttp import web
 from openai import AsyncOpenAI
+from memory_component import MemoryComponent
 from utils.prompts import CHARACTER_CARD_PROMPT
-from utils.sqlite_vector import SQLiteComponent
 
 # Initialize Redis and state manager
 r = redis.Redis(decode_responses=True, host='localhost', port=6379, password='rhost21')
 state = RedisState(r)
-sqlite_utils = SQLiteComponent()
 
 class LLMComponent:
     def __init__(self):
@@ -32,6 +31,7 @@ class LLMComponent:
         self.short_term_memory = []  # Recent conversations
         self.long_term_memory = []   # Important/frequent topics
         self.user_preferences = {}   # User-specific data
+        self.memory_component = MemoryComponent()
         
         print("[LLM] LLM Component initialized with in-memory context")
     
@@ -58,7 +58,7 @@ class LLMComponent:
             
             # Build context from memory systems
             context = await self.build_context(transcript)
-            print(f"[LLM] Built context with {len(context['recent'])} recent items")
+            print(f"[LLM] Built context with {len(context['relevant_memories'])} semantic memories")
             
             # Generate response
             response = await self.generate_response(transcript, context)
@@ -86,20 +86,13 @@ class LLMComponent:
         """Build context from multiple memory sources"""
         print("[LLM] 🧠 Building context from memory systems...")
         
-        #TODO: Implement short memory retriever
-        #TODO: Evaluate effectiveness because we already have the IN Memory 20 last exchanges
-        # Fake SQLite recent history simulation
-        recent_history = await self.get_fake_recent_history()
-        
-        #TODO; Implement long term memory semantic retriever
-        # Fake Weaviate semantic search simulation
+        # Get semantic memories (intelligent)
         relevant_memories = await self.get_fake_relevant_memories(current_transcript)
         
-        # Current session context
+        # Current session context (recent)
         current_session = self.conversation_history[-10:]  # Last 10 exchanges
         
         context = {
-            "recent": recent_history,
             "relevant_memories": relevant_memories,
             "current_session": current_session,
             "user_preferences": self.user_preferences
@@ -107,47 +100,57 @@ class LLMComponent:
         
         return context
     
-    async def get_fake_recent_history(self):
-        """Fake SQLite database - recent conversations"""
-        # Simulate recent conversation history
-        fake_recent = []
-        # fake_recent = [
-        #     {"role": "user", "content": "What's the weather like?"},
-        #     {"role": "assistant", "content": "I'd need your location to check the weather."},
-        #     {"role": "user", "content": "I'm in Munich"},
-        #     {"role": "assistant", "content": "Munich typically has mild weather this time of year."}
-        # ]
-        
-        # Return only last 3 for context (simulate LIMIT 3)
-        return fake_recent[-3:]
-    
     async def get_fake_relevant_memories(self, query):
-        """Fake Weaviate semantic search"""
-        # Simulate semantic search based on keywords
-        all_memories = []
-        # all_memories = [
-        #     {"content": "User prefers detailed explanations", "position": 0},
-        #     {"content": "User is interested in technology topics", "position": 1},
-        #     {"content": "User lives in Munich, Germany", "position": 2},
-        #     {"content": "User asks about weather frequently", "position": 3},
-        #     {"content": "User prefers casual conversation style", "position": 4}
-        # ]
+        """Get relevant memories from Weaviate semantic search"""
+        try:
+            # Use real memory component instead of fake data
+            memories = await self.memory_component.get_semantic_memories(query, limit=3)
+
+            # Convert to the expected format for backward compatibility
+            formatted_memories = []
+            for memory in memories:
+                formatted_memories.append({
+                    "content": memory["content"],
+                    "position": memory["position"],
+                    "type": memory.get("memory_type", "general"),
+                    "timestamp": memory.get("timestamp", "")
+                })
+
+            print(f"[LLM] 🧠 Retrieved {len(formatted_memories)} semantic memories")
+            return formatted_memories
+
+        except Exception as e:
+            print(f"[LLM] ⚠️ Semantic memory retrieval failed: {e}")
+            # Fallback to empty list if memory system fails
+            return []
+
+    # async def get_fake_relevant_memories(self, query):
+    #     """Fake Weaviate semantic search"""
+    #     # Simulate semantic search based on keywords
+    #     all_memories = []
+    #     # all_memories = [
+    #     #     {"content": "User prefers detailed explanations", "position": 0},
+    #     #     {"content": "User is interested in technology topics", "position": 1},
+    #     #     {"content": "User lives in Munich, Germany", "position": 2},
+    #     #     {"content": "User asks about weather frequently", "position": 3},
+    #     #     {"content": "User prefers casual conversation style", "position": 4}
+    #     # ]
         
-        # Fake long term memory based on simple keyword matching
-        relevant = []
-        query_lower = query.lower()
+    #     # Fake long term memory based on simple keyword matching
+    #     relevant = []
+    #     query_lower = query.lower()
         
-        for memory in all_memories:
-            # Simple scoring based on keyword overlap
-            if any(word in query_lower for word in ["weather", "munich", "location"]):
-                if "munich" in memory["content"].lower() or "weather" in memory["content"].lower():
-                    relevant.append(memory)
-            elif any(word in query_lower for word in ["how", "what", "explain"]):
-                if "detailed" in memory["content"].lower():
-                    relevant.append(memory)
+    #     for memory in all_memories:
+    #         # Simple scoring based on keyword overlap
+    #         if any(word in query_lower for word in ["weather", "munich", "location"]):
+    #             if "munich" in memory["content"].lower() or "weather" in memory["content"].lower():
+    #                 relevant.append(memory)
+    #         elif any(word in query_lower for word in ["how", "what", "explain"]):
+    #             if "detailed" in memory["content"].lower():
+    #                 relevant.append(memory)
         
-        # Return top 3 most relevant
-        return sorted(relevant, key=lambda x: x["position"], reverse=True)[:3]
+    #     # Return top 3 most relevant
+    #     return sorted(relevant, key=lambda x: x["position"], reverse=True)[:3]
     
     async def generate_response(self, transcript, context):
         """Generate AI response using OpenAI API with full context"""
@@ -175,10 +178,6 @@ class LLMComponent:
         messages = [
             {"role": "system", "content": system_prompt}
         ]
-        
-        # Add recent history
-        for item in context["recent"]:
-            messages.append({"role": item["role"], "content": item["content"]})
         
         # Add current session
         for item in context["current_session"]:
@@ -239,15 +238,10 @@ class LLMComponent:
         print("[LLM] ✅ Conversation stored in all memory systems")
     
     async def store_in_sqlite(self, user_input, ai_response):
-        """SQLite storage for conversations"""
-        sqlite_utils.store_conversations(user_input, ai_response)
+        """Store conversation using memory component's public interface"""
+        self.memory_component.store_conversations(user_input, ai_response)
         
-        ### TODO Implement SQLite Cleanup
-        # Keep only last 100 entries (simulate database cleanup)
-        # if len(self.short_term_memory) > 100:
-        #     self.short_term_memory = self.short_term_memory[-100:]
-        
-        print(f"[LLM] 📝 Stored in SQLite: User and Ai Conversation")
+        print(f"[LLM] 📝 Stored conversation in memory systems")
     
     async def store_in_fake_weaviate(self, user_input, ai_response, timestamp):
         """Fake Weaviate storage for semantic search"""
