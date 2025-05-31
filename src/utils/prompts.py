@@ -76,6 +76,12 @@ Output: {{
     "formatted_memory": "Studied computer science at MIT"
 }}
 
+Input: "I like japanese food and cats"
+Output: {{
+    "is_important": true,
+    "formatted_memory": "Likes cats and japanese food"
+}}
+
 Message: {replacement}
 Output:
 """
