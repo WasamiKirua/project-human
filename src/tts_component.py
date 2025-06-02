@@ -2,9 +2,10 @@ import time
 import redis
 import asyncio
 from redis_state import RedisState
+from redis_client import create_redis_client
 
-# Initialize Redis and RedisState
-r = redis.Redis(decode_responses=True, host='localhost', port=6379, password='rhost21')
+# Redis config & state
+r = create_redis_client()
 state = RedisState(r)
 
 # Constants

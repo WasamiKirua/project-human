@@ -26,6 +26,16 @@
       }
     },
 
+    "redis": {
+      "host": "localhost",
+      "port": 6379,
+      "password": "rhost21",
+      "decode_responses": true,
+      "socket_timeout": 5,
+      "socket_connect_timeout": 5,
+      "retry_on_timeout": true
+    },
+
     "stt": {
       "whisper_server_url": "http://localhost:8081",
       "whisper_api_url": "http://localhost:8081/inference",

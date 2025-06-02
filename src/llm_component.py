@@ -1,6 +1,4 @@
 import asyncio
-import redis
-import openai
 import json
 import os
 import traceback
@@ -11,9 +9,10 @@ from aiohttp import web
 from openai import AsyncOpenAI
 from memory_component import MemoryComponent
 from utils.prompts import CHARACTER_CARD_PROMPT
+from redis_client import create_redis_client
 
-# Initialize Redis and state manager
-r = redis.Redis(decode_responses=True, host='localhost', port=6379, password='rhost21')
+# Redis config & state
+r = create_redis_client()
 state = RedisState(r)
 
 class LLMComponent:
@@ -22,6 +21,7 @@ class LLMComponent:
         
         # Load configuration
         self.config = self.load_config()
+        print(f"[LLM] Loaded config: {self.config}")
         
         # In-memory conversation context for current session
         self.conversation_history = []
@@ -30,7 +30,6 @@ class LLMComponent:
         # Fake memory stores (will be replaced with SQLite/Weaviate later)
         self.short_term_memory = []  # Recent conversations
         self.long_term_memory = []   # Important/frequent topics
-        self.user_preferences = {}   # User-specific data
         self.memory_component = MemoryComponent()
         
         print("[LLM] LLM Component initialized with in-memory context")
@@ -94,8 +93,7 @@ class LLMComponent:
         
         context = {
             "relevant_memories": relevant_memories,
-            "current_session": current_session,
-            "user_preferences": self.user_preferences
+            "current_session": current_session
         }
         
         return context
@@ -178,12 +176,6 @@ class LLMComponent:
             memory_text += ", ".join([mem["content"] for mem in context["relevant_memories"]])
             base_prompt += memory_text
         
-        # Add user preferences
-        if context["user_preferences"]:
-            pref_text = " Your preferences: "
-            pref_text += ", ".join([f"{k}: {v}" for k, v in context["user_preferences"].items()])
-            base_prompt += pref_text
-        
         return base_prompt
     
     async def store_conversation(self, user_input, ai_response):
@@ -200,12 +192,8 @@ class LLMComponent:
         if len(self.conversation_history) > 40:  # 20 exchanges * 2 messages each
             self.conversation_history = self.conversation_history[-40:]
         
-        # Fake SQLite storage simulation
+        # SQLite storage
         await self.store_in_sqlite(user_input, ai_response)
-        
-        #TODO: Evaluate and eventually implement it
-        # Fake Weaviate storage simulation
-        # await self.store_in_fake_weaviate(user_input, ai_response, timestamp)
         
         print("[LLM] ✅ Conversation stored in all memory systems")
     

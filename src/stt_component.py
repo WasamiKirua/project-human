@@ -1,5 +1,4 @@
 import time
-import redis
 import asyncio
 import threading
 import tempfile
@@ -7,10 +6,14 @@ import os
 import wave
 import requests
 import json
-import asyncio
 import aiohttp
 import concurrent.futures
 from redis_state import RedisState
+from redis_client import create_redis_client
+
+# Redis config & state
+r = create_redis_client()
+state = RedisState(r)
 
 # Audio recording dependencies
 try:
@@ -33,8 +36,6 @@ except ImportError:
     print("[STT] Warning: silero-vad not installed. Install with: pip install silero-vad onnxruntime")
     SILERO_AVAILABLE = False
 
-r = redis.Redis(decode_responses=True, host='localhost', port=6379, password='rhost21')
-state = RedisState(r)
 
 # Global Silero VAD model
 silero_model = None

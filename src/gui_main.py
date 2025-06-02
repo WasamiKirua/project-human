@@ -1,18 +1,20 @@
 import sys
 import random
-import redis
 import threading
+import json
+import requests
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel
 from PySide6.QtCore import QTimer, Qt, Signal, QObject
 from PySide6.QtGui import QPainter, QColor
 from redis_state import RedisState
+from redis_client import create_redis_client
 
-# Redis state
-r = redis.Redis(host='localhost', port=6379, password='rhost21', decode_responses=True)
+# Redis config & state
+r = create_redis_client()
 state = RedisState(r)
-
 
 CHANNEL = "channel:state"
 
@@ -25,6 +27,106 @@ class SignalBridge(QObject):
     start_auto_listening = Signal()  # New signal for auto-restart
 
 bridge = SignalBridge()
+
+class ServiceHealthChecker:
+    def __init__(self):
+        self.config = self.load_config()
+        self.last_check = None
+    
+    def load_config(self):
+        """Load configuration for health checks"""
+        try:
+            with open('config.json', 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Health] ⚠️ Could not load config: {e}")
+            return {}
+    
+    def check_redis(self):
+        """Check if Redis is accessible"""
+        try:
+            r.ping()
+            return {"status": "healthy", "message": "Connected"}
+        except Exception as e:
+            return {"status": "unhealthy", "message": "Connection failed"}
+    
+    def check_weaviate(self):
+        """Check if Weaviate is accessible"""
+        try:
+            response = requests.get("http://localhost:8080/v1/.well-known/ready", timeout=3)
+            if response.status_code == 200:
+                return {"status": "healthy", "message": "Connected"}
+            else:
+                return {"status": "unhealthy", "message": f"HTTP {response.status_code}"}
+        except Exception:
+            return {"status": "unhealthy", "message": "Connection failed"}
+    
+    def check_whisper_server(self):
+        """Check if Whisper server is accessible"""
+        try:
+            whisper_health_url = self.config.get("stt", {}).get("whisper_health_url", "http://localhost:8081/health")
+            response = requests.get(whisper_health_url, timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == "ok":
+                    return {"status": "healthy", "message": "Ready"}
+            return {"status": "unhealthy", "message": "Server not ready"}
+        except Exception:
+            return {"status": "unhealthy", "message": "Connection failed"}
+    
+    def check_services_for_stt(self):
+        """Check services needed for speech-to-text"""
+        print(f"[Health] 🎤 Checking STT prerequisites...")
+        
+        redis_status = self.check_redis()
+        whisper_status = self.check_whisper_server()
+        
+        redis_ok = redis_status["status"] == "healthy"
+        whisper_ok = whisper_status["status"] == "healthy"
+        
+        print(f"[Health] {'✅' if redis_ok else '❌'} Redis: {redis_status['message']}")
+        print(f"[Health] {'✅' if whisper_ok else '❌'} Whisper: {whisper_status['message']}")
+        
+        if redis_ok and whisper_ok:
+            print(f"[Health] 🎉 STT ready to go!")
+            return True, "STT Ready"
+        else:
+            missing = []
+            if not redis_ok: missing.append("Redis")
+            if not whisper_ok: missing.append("Whisper")
+            error_msg = f"STT unavailable: {', '.join(missing)} down"
+            print(f"[Health] ❌ {error_msg}")
+            return False, error_msg
+    
+    def check_all_services(self):
+        """Full system health check"""
+        print(f"\n[Health] 🏥 Full system health check...")
+        
+        redis_status = self.check_redis()
+        weaviate_status = self.check_weaviate()
+        whisper_status = self.check_whisper_server()
+        
+        services = [
+            ("Redis", redis_status),
+            ("Weaviate", weaviate_status), 
+            ("Whisper", whisper_status)
+        ]
+        
+        all_healthy = True
+        for name, status in services:
+            icon = "✅" if status["status"] == "healthy" else "❌"
+            print(f"[Health] {icon} {name}: {status['message']}")
+            if status["status"] != "healthy":
+                all_healthy = False
+        
+        if all_healthy:
+            print(f"[Health] 🎉 All services healthy!")
+            return True, "All Systems Healthy"
+        else:
+            unhealthy = [name for name, status in services if status["status"] != "healthy"]
+            error_msg = f"Issues: {', '.join(unhealthy)}"
+            print(f"[Health] ⚠️ {error_msg}")
+            return False, error_msg
 
 class KawaiiWaveWidget(QWidget):
     def __init__(self):
@@ -75,10 +177,13 @@ class MicControlApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Kawaii Mic Assistant")
-        self.resize(400, 350)
+        self.resize(400, 400)  # Increased height for health button
         self.current_state = "ready"
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.continuous_mode = True  # Default to continuous mode
+        
+        # Add health checker
+        self.health_checker = ServiceHealthChecker()
         
         # Timer for delay after AI speech in continuous mode
         self.continuous_timer = QTimer(self)
@@ -86,11 +191,15 @@ class MicControlApp(QWidget):
         self.continuous_timer.timeout.connect(self.auto_start_listening)
 
         # UI Components
-        self.status_label = QLabel("Status: Ready (Continuous) 🌸", self)
+        self.status_label = QLabel("Status: Starting up... 🚀", self)
         self.status_label.setAlignment(Qt.AlignCenter)
         
         self.talk_button = QPushButton("🎤 Start Talking", self)
         self.talk_button.clicked.connect(self.start_talking)
+        
+        # Add manual health check button
+        self.health_button = QPushButton("🏥 Check System Health", self)
+        self.health_button.clicked.connect(self.manual_health_check)
 
         self.wave_widget = KawaiiWaveWidget()
 
@@ -99,6 +208,7 @@ class MicControlApp(QWidget):
         layout.addWidget(self.status_label)
         layout.addWidget(self.wave_widget, stretch=1)
         layout.addWidget(self.talk_button)
+        layout.addWidget(self.health_button)  # Add health button
         self.setLayout(layout)
 
         # Connect signals for thread-safe updates
@@ -107,6 +217,30 @@ class MicControlApp(QWidget):
         bridge.start_animation.connect(self.start_wave_animation, Qt.QueuedConnection)
         bridge.stop_animation.connect(self.stop_wave_animation, Qt.QueuedConnection)
         bridge.start_auto_listening.connect(self.start_auto_listening_delayed, Qt.QueuedConnection)
+        
+        # Auto health check on startup (after 3 seconds)
+        QTimer.singleShot(3000, self.startup_health_check)
+
+    def startup_health_check(self):
+        """Health check when GUI starts"""
+        def run_startup_check():
+            print(f"\n[Health] 🚀 Startup health check...")
+            healthy, message = self.health_checker.check_all_services()
+            
+            if healthy:
+                bridge.update_status.emit("Status: Ready (All Systems Healthy) 🌸")
+            else:
+                bridge.update_status.emit(f"Status: ⚠️ {message}")
+        
+        self.executor.submit(run_startup_check)
+    
+    def manual_health_check(self):
+        """Manual health check triggered by button"""
+        def run_manual_check():
+            healthy, message = self.health_checker.check_all_services()
+            bridge.update_status.emit(f"Health Check: {message}")
+        
+        self.executor.submit(run_manual_check)
 
     def start_auto_listening_delayed(self):
         """Start auto-listening with delay - called from main thread via signal"""
@@ -130,29 +264,38 @@ class MicControlApp(QWidget):
             self.start_talking()
 
     def start_talking(self):
-        """Trigger the STT process through Redis state"""
+        """Trigger the STT process through Redis state with health check"""
         print(f"[GUI] 🎙️ start_talking() called - State: {self.current_state}")
         
         if self.current_state == "ready":
             self.current_state = "requesting"
-            print("[GUI] 📢 Starting listening")
+            print("[GUI] 📢 Starting listening with health check")
+            bridge.update_button.emit("🔄 Checking...", False)
+            
+            # Run health check and STT trigger in executor
+            self.executor.submit(self._check_and_start_stt)
+        else:
+            print(f"[GUI] ❌ Cannot start talking - wrong state: {self.current_state}")
+
+    def _check_and_start_stt(self):
+        """Check health and start STT if prerequisites are met"""
+        try:
+            # Check STT prerequisites
+            stt_ready, stt_message = self.health_checker.check_services_for_stt()
+            
+            if not stt_ready:
+                bridge.update_status.emit(f"Status: ❌ {stt_message}")
+                bridge.update_button.emit("🎤 Start Talking", True)  # Re-enable button
+                self.current_state = "ready"  # Reset state
+                return
+            
+            # Prerequisites OK, proceed with STT
+            print(f"[GUI] ✅ Health check passed, starting STT...")
             bridge.update_status.emit("Status: Listening... ⚡")
             bridge.update_button.emit("🔄 Starting...", False)
             bridge.start_animation.emit()
             
-            # Use RedisState to trigger STT with proper source and priority
-            # Run in executor to avoid blocking the UI
-            self.executor.submit(self._trigger_stt)
-        else:
-            print(f"[GUI] ❌ Cannot start talking - wrong state: {self.current_state}")
-
-    def _trigger_stt(self):
-        """Helper method to trigger STT asynchronously"""
-        try:
-            print("[GUI] 🚀 _trigger_stt called")
-            print("[GUI] 🔍 Checking current Redis state before trigger...")
-            
-            # Check current state
+            # Check current Redis state
             current_user_wants = state.get_value("user_wants_to_talk")
             current_ai_speaking = state.get_value("ai_speaking")
             current_human_speaking = state.get_value("human_speaking")
@@ -170,15 +313,20 @@ class MicControlApp(QWidget):
                 print("[GUI] ✅ Successfully triggered user_wants_to_talk")
             else:
                 print("[GUI] ❌ Failed to set user_wants_to_talk - check rules")
+                bridge.update_status.emit("Status: ❌ State management error")
+                bridge.update_button.emit("🎤 Start Talking", True)
+                bridge.stop_animation.emit()
+                self.current_state = "ready"
                 
         except Exception as e:
-            print(f"[GUI] ❌ Error triggering STT: {e}")
+            print(f"[GUI] ❌ Error in health check/STT trigger: {e}")
             import traceback
             traceback.print_exc()
             # Reset to ready state on error
-            bridge.update_status.emit("Status: Error - Ready 🌸")
+            bridge.update_status.emit("Status: ❌ Error - Ready 🌸")
             bridge.update_button.emit("🎤 Start Talking", True)
             bridge.stop_animation.emit()
+            self.current_state = "ready"
 
     def update_status(self, text):
         """Update status label"""

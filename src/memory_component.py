@@ -13,9 +13,10 @@ import weaviate
 from weaviate.classes.config import Configure, DataType, Property
 from weaviate.classes.query import Filter
 from utils.prompts import MEMORY_ANALYSIS_PROMPT
+from redis_client import create_redis_client
 
-# Initialize Redis and state manager
-r = redis.Redis(decode_responses=True, host='localhost', port=6379, password='rhost21')
+# Redis config & state
+r = create_redis_client()
 state = RedisState(r)
 
 class MemoryComponent:
@@ -259,7 +260,6 @@ class MemoryComponent:
         # Store in SQLite (data warehouse) - synchronous
         self._store_in_sqlite(user_input, ai_response)
         
-        # Evaluate and potentially store in Weaviate (semantic memory) - asynchronous
         # Run in background to avoid blocking the conversation flow
         try:
             # Try to get the current event loop, or create a new task if we're in an async context
@@ -320,7 +320,7 @@ class MemoryComponent:
 
         try:
             # Convert the entries list to a JSON string
-            entries_json = json.dumps(entries)
+            entries_json = json.dumps(entries, ensure_ascii=False)
 
             db.execute(
                 "INSERT INTO messages(id, message) VALUES(?, ?)",
@@ -518,110 +518,6 @@ class MemoryComponent:
         except Exception as e:
             print(f"[Memory] ❌ Error in semantic search: {e}")
             return []
-
-    async def get_user_facts(self, query: Optional[str] = None) -> List[Dict]:
-        """Get user facts specifically, optionally filtered by query - OPTIMIZED for Weaviate v4.14.4+"""
-        if not self.weaviate_collection:
-            return []
-            
-        try:
-            if query:
-                # Use semantic search with filtering - v4.14.4+ correct syntax
-                response = self.weaviate_collection.query.near_text(
-                    query=query,
-                    limit=10,
-                    return_properties=["content", "timestamp", "position"],
-                    filters=Filter.by_property("memoryType").equal("fact")
-                )
-            else:
-                # Get all facts using native Weaviate filtering - v4.14.4+ correct syntax
-                response = self.weaviate_collection.query.fetch_objects(
-                    limit=20,
-                    return_properties=["content", "timestamp", "position"],
-                    filters=Filter.by_property("memoryType").equal("fact")
-                )
-                
-            facts = []
-            if response.objects:
-                for obj in response.objects:
-                    fact = {
-                        "content": obj.properties.get("content", ""),
-                        "timestamp": obj.properties.get("timestamp", ""),
-                        "position": obj.properties.get("position", 0)
-                    }
-                    facts.append(fact)
-                    
-            print(f"[Memory] 📋 Retrieved {len(facts)} user facts (v4.14.4+ optimized)")
-            return facts
-            
-        except Exception as e:
-            print(f"[Memory] ❌ Error retrieving user facts: {e}")
-            # Fallback: get all semantic memories and filter in Python
-            try:
-                all_memories = await self.get_semantic_memories(query or "user facts", limit=20)
-                facts = [mem for mem in all_memories if mem.get("memory_type") == "fact"]
-                print(f"[Memory] 📋 Fallback: Retrieved {len(facts)} user facts")
-                return facts
-            except:
-                return []
-
-    def get_weaviate_stats(self) -> Dict:
-        """Get statistics about stored memories - OPTIMIZED for Weaviate v4.14.4+"""
-        if not self.weaviate_collection:
-            return {"error": "Weaviate not available"}
-            
-        try:
-            # Get total count using v4.14.4+ optimized approach
-            total_result = self.weaviate_collection.aggregate.over_all(total_count=True)
-            total_count = total_result.total_count
-            
-            # Get count by memory type using native Weaviate aggregation - v4.14.4+ correct syntax
-            type_counts = {}
-            for memory_type in ["fact", "preference", "experience", "general"]:
-                try:
-                    type_result = self.weaviate_collection.aggregate.over_all(
-                        total_count=True,
-                        filters=Filter.by_property("memoryType").equal(memory_type)
-                    )
-                    type_counts[memory_type] = type_result.total_count
-                except Exception as e:
-                    print(f"[Memory] ⚠️ Could not get count for {memory_type}: {e}")
-                    type_counts[memory_type] = 0
-                    
-            return {
-                "total_memories": total_count,
-                "by_type": type_counts,
-                "status": "connected (v4.14.4+ optimized)"
-            }
-            
-        except Exception as e:
-            print(f"[Memory] ❌ Native aggregation failed, using fallback: {e}")
-            # Fallback: fetch and count in Python if aggregation fails
-            try:
-                response = self.weaviate_collection.query.fetch_objects(
-                    limit=1000,
-                    return_properties=["memoryType"]
-                )
-                
-                type_counts = {"fact": 0, "preference": 0, "experience": 0, "general": 0}
-                total_count = 0
-                
-                if response.objects:
-                    for obj in response.objects:
-                        total_count += 1
-                        memory_type = obj.properties.get("memoryType", "general")
-                        if memory_type in type_counts:
-                            type_counts[memory_type] += 1
-                        else:
-                            type_counts["general"] += 1
-                            
-                return {
-                    "total_memories": total_count,
-                    "by_type": type_counts,
-                    "status": "connected (fallback mode)"
-                }
-            except Exception as fallback_error:
-                return {"error": f"Could not get stats: {fallback_error}"}
 
     def close_weaviate(self):
         """Close Weaviate connection"""
