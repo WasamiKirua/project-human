@@ -25,5 +25,8 @@ weaviate_data/
 # Configuration sensible
 config.json
 
+# WAVs
+*.wav
+
 # Logs
 logs/

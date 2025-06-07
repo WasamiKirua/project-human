@@ -10,7 +10,11 @@
       },
       "tts_ready": {
         "allowed_sources": ["llm"],
-        "allow_if": "True"
+        "min_priority": 5
+      },
+      "tts_text": {
+        "allowed_sources": ["llm", "tts"],
+        "min_priority": 3
       },
       "user_wants_to_talk": {
         "allowed_sources": ["gui", "stt"],
@@ -52,7 +56,8 @@
 
     "api_keys": {
       "openai_api_key": "",
-      "groq_api_key": ""
+      "groq_api_key": "",
+      "resemble_api_key": ""
     },
 
     "memory": {

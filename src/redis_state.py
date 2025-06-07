@@ -78,10 +78,13 @@ class RedisState:
 
     def set_value(self, key: str, value: Any, source: str = "system", priority: int = 1):
         # Synchronous version of set (for non-async components)
-        print(f"[State] 🚀 set_value called: {key}={value}, source={source}, priority={priority}")
+        # Only log for debugging high-priority state changes
+        if priority >= 20:  # Only log important state changes
+            print(f"[State] 🚀 set_value called: {key}={value}, source={source}, priority={priority}")
         try:
             result = asyncio.run(self.set(key, value, source, priority))
-            print(f"[State] 📊 set_value result: {result}")
+            if priority >= 20:  # Only log results for important changes
+                print(f"[State] 📊 set_value result: {result}")
             return result
         except Exception as e:
             print(f"[State] ❌ Error in set_value: {e}")
@@ -107,9 +110,12 @@ class RedisState:
 
                 if "=" in data:
                     key, val = data.split("=", 1)
-                    print(f"[State] 📨 Received: {key}={val}")
+                    # Only log received messages for important state changes
+                    if key in ["user_wants_to_talk", "ai_thinking", "ai_speaking"] or "error" in val.lower():
+                        print(f"[State] 📨 Received: {key}={val}")
                     if key in self.subscribers:
-                        print(f"[State] 🎯 Calling callback for {key}")
+                        if key in ["user_wants_to_talk", "tts_ready"]:  # Only log important callbacks
+                            print(f"[State] 🎯 Calling callback for {key}")
                         old = self.get_value(key)
                         try:
                             await self.subscribers[key](key, val, old)
@@ -117,8 +123,7 @@ class RedisState:
                             print(f"[State] ❌ Error in callback for {key}: {e}")
                             import traceback
                             traceback.print_exc()
-                    else:
-                        print(f"[State] 🔍 No subscriber for {key}")
+                    # Remove noisy "No subscriber" messages - states work fine without active listeners
         except Exception as e:
             print(f"[State] ❌ Error in listen loop: {e}")
             import traceback

@@ -1,4 +1,3 @@
-import redis
 import json
 import apsw
 import sqlite_vec
@@ -8,10 +7,9 @@ import asyncio
 from redis_state import RedisState
 from datetime import datetime
 from groq import AsyncGroq
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict
 import weaviate
 from weaviate.classes.config import Configure, DataType, Property
-from weaviate.classes.query import Filter
 from utils.prompts import MEMORY_ANALYSIS_PROMPT
 from redis_client import create_redis_client
 
@@ -337,44 +335,40 @@ class MemoryComponent:
             print("[Memory] ❌ No Groq API key available!")
             return "Error: No Groq API key configured"
         
-        client = AsyncGroq(api_key=self.groq_key)
-        try:
-            prompt = MEMORY_ANALYSIS_PROMPT.replace('{replacement}', f'{query}')
-            print(f"[Memory] 📤 Sending request to Groq API...")
-            
-            response = await client.chat.completions.create(
-                model="gemma2-9b-it",
-                messages=[
-                    {"role": "user", "content": f"{prompt}"}
-                ]
-            )
+        # Use async context manager for automatic cleanup
+        async with AsyncGroq(api_key=self.groq_key) as client:
+            try:
+                prompt = MEMORY_ANALYSIS_PROMPT.replace('{replacement}', f'{query}')
+                print(f"[Memory] 📤 Sending request to Groq API...")
+                
+                response = await client.chat.completions.create(
+                    model="gemma2-9b-it",
+                    messages=[
+                        {"role": "user", "content": f"{prompt}"}
+                    ]
+                )
 
-            result = response.choices[0].message.content
-            # Direct extraction of formatted_memory when is_important is true
-            if '"is_important": true' in result:
-                memory_match = re.search(r'"formatted_memory":\s*"([^"]+)"', result)
-                if memory_match:
-                    formatted_memory = memory_match.group(1)
-                    print(f"[Memory] Extracted memory: {formatted_memory}")
+                result = response.choices[0].message.content
+                # Direct extraction of formatted_memory when is_important is true
+                if '"is_important": true' in result:
+                    memory_match = re.search(r'"formatted_memory":\s*"([^"]+)"', result)
+                    if memory_match:
+                        formatted_memory = memory_match.group(1)
+                        print(f"[Memory] Extracted memory: {formatted_memory}")
+                    else:
+                        formatted_memory = None
                 else:
                     formatted_memory = None
-            else:
-                formatted_memory = None
-            
-            return formatted_memory
-            
-        except Exception as e:
-            print(f"[Memory] ❌ Error in Groq API call: {e}")
-            import traceback
-            traceback.print_exc()
-            return f"Error: {str(e)}"
-        finally:
-            # Properly close the client to avoid resource warnings
-            try:
-                await client.close()  # Use close() instead of aclose()
-                print(f"[Memory] 🔒 Closed Groq client")
-            except Exception as close_error:
-                print(f"[Memory] ⚠️ Error closing Groq client: {close_error}")
+                
+                print(f"[Memory] 🔒 Groq client automatically closed")
+                return formatted_memory
+                
+            except Exception as e:
+                print(f"[Memory] ❌ Error in Groq API call: {e}")
+                import traceback
+                traceback.print_exc()
+                return f"Error: {str(e)}"
+            # No finally needed - context manager handles cleanup automatically
 
     async def store_memory_if_important(self, user_input, ai_response, formatted_memory):
         """Store memory in Weaviate if evaluation returned content"""

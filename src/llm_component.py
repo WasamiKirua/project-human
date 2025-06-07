@@ -17,6 +17,7 @@ state = RedisState(r)
 
 class LLMComponent:
     def __init__(self):
+        
         global llm_component  # Set global reference immediately
         
         # Load configuration
@@ -66,20 +67,27 @@ class LLMComponent:
             # Update memory systems
             await self.store_conversation(transcript, response)
             
-            # Pass response directly to TTS
-            await self.trigger_tts_processing(response)
-            
-            # Clear thinking state and signal TTS readiness
+            # Trigger TTS processing via Redis state
+            tts_success = await self.trigger_tts_processing(response)
+            if tts_success:
+                print("[LLM] ✅ TTS processing triggered successfully")
+            else:
+                print("[LLM] ❌ Failed to trigger TTS processing")
+
+            # Clear thinking state 
             await state.set("ai_thinking", "False", source="llm", priority=10)
-            await state.set("tts_ready", "True", source="llm", priority=8)
-            
-            print("[LLM] Processing complete!")
-            
+
+            print("[LLM] ✅ Processing complete!")
+            return response
+        
         except Exception as e:
             print(f"[LLM] ❌ Error in LLM processing: {e}")
-            # Reset states on error
-            await state.set("ai_thinking", "False", source="llm", priority=10)
+            import traceback
             traceback.print_exc()
+            
+            # Ensure thinking state is cleared on error
+            await state.set("ai_thinking", "False", source="llm", priority=10)
+            raise
     
     async def build_context(self, current_transcript):
         """Build context from multiple memory sources"""
@@ -156,15 +164,16 @@ class LLMComponent:
         # Add current user input
         messages.append({"role": "user", "content": transcript})
 
-        client = AsyncOpenAI(base_url=f'http://localhost:{port}/v1', api_key=api_key)
-        
-        response = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=2048,
-            temperature=0.7
-        )
-        return response.choices[0].message.content
+        # Use async context manager for automatic cleanup
+        async with AsyncOpenAI(base_url=f'http://localhost:{port}/v1', api_key=api_key) as client:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=2048,
+                temperature=0.7
+            )
+            print("[LLM] 🔒 AsyncOpenAI client automatically closed")
+            return response.choices[0].message.content
     
     def build_system_prompt(self, context):
         """Build system prompt with context information"""
@@ -240,31 +249,25 @@ class LLMComponent:
         print(f"[LLM] 🧠 Stored in fake Weaviate: {len(self.long_term_memory)} total memories")
     
     async def trigger_tts_processing(self, response):
-        """Direct communication with TTS component via HTTP API"""
-        print(f"[LLM] 📞 Sending response to TTS via HTTP: '{response[:50]}...'")
-        
+        """Trigger TTS processing via Redis state management"""
+        print(f"[LLM] 🎤 Triggering TTS for response: '{response[:50]}...'")
+
         try:
-            # Send response directly to TTS component via HTTP  
-            async with aiohttp.ClientSession() as session:
-                payload = {"text": response}
-                async with session.post(
-                    "http://localhost:8083/speak_text", 
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30)
-                ) as tts_response:
-                    if tts_response.status == 200:
-                        result = await tts_response.json()
-                        print(f"[LLM] ✅ TTS processed response successfully")
-                        return result
-                    else:
-                        print(f"[LLM] ❌ TTS HTTP error: {tts_response.status}")
-                        
-        except Exception as e:
-            print(f"[LLM] ❌ Could not reach TTS component: {e}")
-            print(f"[LLM] 📡 Using Redis state trigger as fallback")
-            
-            # Fallback: use Redis state management for TTS
+            # Set the text to be spoken in Redis state
+            await state.set("tts_text", response, source="llm", priority=8)
+            print(f"[LLM] 📝 Set tts_text state with response")
+
+            # Signal TTS component that text is ready for processing
             await state.set("tts_ready", "True", source="llm", priority=8)
+            print(f"[LLM] 🚀 Set tts_ready=True to trigger TTS processing")
+
+            return True
+
+        except Exception as e:
+            print(f"[LLM] ❌ Error triggering TTS: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
 async def http_process_transcript(request):
     """HTTP endpoint for receiving transcripts from STT"""
