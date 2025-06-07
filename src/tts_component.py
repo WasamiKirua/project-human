@@ -4,6 +4,7 @@ import json
 import asyncio
 import requests
 import base64
+import re
 from resemble import Resemble
 from redis_state import RedisState
 from redis_client import create_redis_client
@@ -79,9 +80,39 @@ class TtsComponent:
             
         return api_keys
 
+    def sanitize_text_for_tts(self, text: str) -> str:
+        """Sanitize text to prevent SSML validation errors"""
+        import re
+        
+        # Remove or replace problematic characters that could be interpreted as SSML
+        sanitized = text
+        
+        # Replace common emoticons that use < > characters
+        sanitized = re.sub(r'<3', '♥', sanitized)  # Heart emoticon
+        sanitized = re.sub(r'<\/3', '💔', sanitized)  # Broken heart
+        
+        # Remove any remaining standalone < or > that aren't part of valid SSML
+        # This is a simple approach - for more complex SSML support, we'd need proper parsing
+        sanitized = re.sub(r'<(?![a-zA-Z/])', '&lt;', sanitized)  # < not followed by letter or /
+        sanitized = re.sub(r'(?<![a-zA-Z/])>', '&gt;', sanitized)  # > not preceded by letter or /
+        
+        # Remove any other problematic characters that could cause SSML issues
+        sanitized = re.sub(r'[^\w\s\.,!?;:\'"()\-–—♥💔]', '', sanitized)
+        
+        # Clean up extra whitespace
+        sanitized = ' '.join(sanitized.split())
+        
+        if sanitized != text:
+            print(f"[TTS] 🧹 Sanitized text: '{text}' → '{sanitized}'")
+            
+        return sanitized
+
     def generate_audio(self, text: str):
         """Generate audio using Resemble AI API with retry logic and cleanup"""
-        print(f"[TTS] 🎤 Generating audio from text: {text[:60]}...")
+        # Sanitize text before processing
+        sanitized_text = self.sanitize_text_for_tts(text)
+        
+        print(f"[TTS] 🎤 Generating audio from text: {sanitized_text[:60]}...")
 
         if not self.resemble_key:
             print("[TTS] ❌ No Resemble API key available")
@@ -89,7 +120,7 @@ class TtsComponent:
 
         data = {
             "voice_uuid": "e28236ee",
-            "data": text,
+            "data": sanitized_text,  # Use sanitized text
             "sample_rate": 48000,
             "output_format": "wav"
         }
@@ -100,6 +131,9 @@ class TtsComponent:
 
         max_attempts = 15
         wait_time = 1
+        
+        # Add small delay to prevent rapid API calls after interruption
+        time.sleep(0.5)
 
         for attempt in range(1, max_attempts + 1):
             try:
@@ -141,11 +175,31 @@ class TtsComponent:
                     except requests.exceptions.JSONDecodeError as e:
                         print(f"[TTS] ❌ JSON parsing error on attempt {attempt}: {e}")
 
-                elif response.status_code == 500:
-                    print(f"[TTS] ⚠️ 500 error on attempt {attempt}/{max_attempts}")
+                elif response.status_code == 400:
+                    # 400 errors are usually validation issues that won't be fixed by retrying
+                    print(f"[TTS] ❌ Validation error (400) - not retrying")
+                    try:
+                        error_details = response.json()
+                        error_name = error_details.get("error_name", "Unknown")
+                        error_message = error_details.get("message", "No message")
+                        print(f"[TTS] Error details: {error_name} - {error_message}")
+                        
+                        # If it's an SSML error, we could try to sanitize further or fall back
+                        if "SSML" in error_name or "SSML" in error_message:
+                            print("[TTS] ⚠️ SSML validation failed despite sanitization")
+                            
+                    except:
+                        print(f"[TTS] Response: {response.text}")
+                    
+                    return None  # Don't retry 400 errors
+
+                elif response.status_code in [500, 502, 503, 504]:
+                    print(f"[TTS] ⚠️ Server error {response.status_code} on attempt {attempt}/{max_attempts}")
                     if attempt < max_attempts:
-                        print(f"[TTS] 🔄 Waiting {wait_time}s before retry...")
-                        time.sleep(wait_time)
+                        # Exponential backoff for server errors after interruption
+                        backoff_time = wait_time * (2 ** min(attempt - 1, 3))  # Cap at 8 seconds
+                        print(f"[TTS] 🔄 Waiting {backoff_time}s before retry...")
+                        time.sleep(backoff_time)
                         continue
                     else:
                         print(f"[TTS] ❌ Max attempts reached, giving up")
@@ -191,6 +245,14 @@ class TtsComponent:
             import glob
             import os
             
+            # Stop any ongoing pygame playback before cleanup
+            try:
+                if hasattr(pygame.mixer, 'music') and pygame.mixer.music.get_busy():
+                    pygame.mixer.music.stop()
+                    time.sleep(0.1)  # Small delay to ensure cleanup
+            except:
+                pass
+            
             # Clean both patterns: simple and unique filenames
             patterns = ["output.wav", "tts_audio_*.wav"]
             
@@ -199,8 +261,10 @@ class TtsComponent:
                 audio_files = glob.glob(pattern)
                 for file_path in audio_files:
                     try:
-                        os.remove(file_path)
-                        cleaned_count += 1
+                        # Ensure file is not in use before deletion
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                            cleaned_count += 1
                     except Exception as e:
                         print(f"[TTS] ⚠️ Could not delete {file_path}: {e}")
                         
@@ -210,29 +274,88 @@ class TtsComponent:
         except Exception as e:
             print(f"[TTS] ⚠️ Error during cleanup: {e}")
 
-    def play_audio_pygame(self, filename):
-        """Play audio using pygame"""
+    async def play_audio_pygame_async(self, filename):
+        """Async version of play audio using pygame with interruption detection"""
         try:
+            # Clear any interruption state before starting
+            await state.set("interrupt_ai_speech", "false", source="tts", priority=10)
+            
             pygame.mixer.music.load(filename)
             pygame.mixer.music.play()
             
             # Wait for playback to complete or interruption
             while pygame.mixer.music.get_busy():
-                if state.get_value("human_speaking") == "True":
+                # Check for interruption signal
+                interrupt_value = state.get_value("interrupt_ai_speech")
+                if interrupt_value == "true":
+                    pygame.mixer.music.stop()
+                    print("[TTS] 🛑 Audio interrupted by user speech")
+                    return "interrupted"
+                    
+                # Legacy check for human_speaking (keeping for compatibility)
+                human_speaking = state.get_value("human_speaking")
+                if human_speaking == "True":
                     pygame.mixer.music.stop()
                     print("[TTS] 🛑 Playback interrupted by human")
-                    return False
-                time.sleep(0.1)
+                    return "interrupted"
+                    
+                # Use asyncio.sleep instead of time.sleep for async compatibility
+                await asyncio.sleep(0.1)  # 100ms polling interval
                 
             print("[TTS] ✅ Playback finished successfully")
-            return True
+            return "completed"
             
         except Exception as e:
             print(f"[TTS] ❌ Pygame playback error: {e}")
-            return False
+            return "error"
+
+    def play_audio_pygame(self, filename):
+        """Play audio using pygame with interruption detection"""
+        try:
+            # Clear any interruption state before starting - use direct Redis to avoid asyncio issues
+            try:
+                full_key = "state:interrupt_ai_speech"
+                ts = int(time.time())
+                state.r.hset(full_key, mapping={
+                    "value": "false",
+                    "source": "tts", 
+                    "priority": 10,
+                    "timestamp": ts
+                })
+                state.r.publish(state.pub_channel, "interrupt_ai_speech=false")
+            except Exception as e:
+                print(f"[TTS] ⚠️ Error clearing interruption state: {e}")
+            
+            pygame.mixer.music.load(filename)
+            pygame.mixer.music.play()
+            
+            # Wait for playback to complete or interruption
+            while pygame.mixer.music.get_busy():
+                # Check for interruption signal
+                interrupt_value = state.get_value("interrupt_ai_speech")
+                if interrupt_value == "true":
+                    pygame.mixer.music.stop()
+                    print("[TTS] 🛑 Audio interrupted by user speech")
+                    return "interrupted"
+                    
+                # Legacy check for human_speaking (keeping for compatibility)
+                human_speaking = state.get_value("human_speaking")
+                if human_speaking == "True":
+                    pygame.mixer.music.stop()
+                    print("[TTS] 🛑 Playback interrupted by human")
+                    return "interrupted"
+                    
+                time.sleep(0.1)  # 100ms polling interval
+                
+            print("[TTS] ✅ Playback finished successfully")
+            return "completed"
+            
+        except Exception as e:
+            print(f"[TTS] ❌ Pygame playback error: {e}")
+            return "error"
         
     def play_audio_system(self, filename):
-        """Play audio using system command"""
+        """Play audio using system command with interruption detection"""
         try:
             if os.name == 'posix':  # macOS/Linux
                 import subprocess
@@ -240,27 +363,35 @@ class TtsComponent:
                 
                 # Monitor for interruption
                 while process.poll() is None:
+                    # Check for interruption signal
+                    if state.get_value("interrupt_ai_speech") == "true":
+                        process.terminate()
+                        print("[TTS] 🛑 Audio interrupted by user speech")
+                        return "interrupted"
+                        
+                    # Legacy check for human_speaking (keeping for compatibility)
                     if state.get_value("human_speaking") == "True":
                         process.terminate()
                         print("[TTS] 🛑 Playback interrupted by human")
-                        return False
-                    time.sleep(0.1)
+                        return "interrupted"
+                        
+                    time.sleep(0.1)  # 100ms polling interval
                     
                 print("[TTS] ✅ Playback finished successfully")
-                return True
+                return "completed"
             else:
                 print("[TTS] ❌ System audio playback not implemented for this OS")
-                return False
+                return "error"
                 
         except Exception as e:
             print(f"[TTS] ❌ System playback error: {e}")
-            return False
+            return "error"
         
     def play_audio(self, filename):
         """Play audio with interruption detection"""
         if not filename or not os.path.exists(filename):
             print("[TTS] ❌ Audio file not found")
-            return False
+            return "error"
             
         print(f"[TTS] 🔊 Starting playback: {filename}")
         
@@ -301,27 +432,28 @@ async def on_tts_ready(key, value, old):
             
             if audio_file:
                 # Play the generated audio
-                success = tts_component.play_audio(audio_file)
+                playback_result = tts_component.play_audio(audio_file)
                 
-                if success:
+                if playback_result == "completed":
                     print("[TTS] ✅ TTS processing completed successfully")
+                elif playback_result == "interrupted":
+                    print("[TTS] ⚠️ Playback was interrupted by user")
                 else:
-                    print("[TTS] ⚠️ Playback was interrupted or failed")
+                    print("[TTS] ❌ Playback failed or encountered an error")
             else:
                 print("[TTS] ❌ Audio generation failed")
             
             # Reset ai_speaking flag - keep high priority for immediate effect
             await state.set("ai_speaking", "False", source="tts", priority=10)
             
+            # Reset interrupt flag to clear any pending interruptions
+            await state.set("interrupt_ai_speech", "false", source="tts", priority=10)
+            
             # Clear tts_ready signal - use priority LOWER than LLM (8) so LLM can set it again
             await state.set("tts_ready", "False", source="tts", priority=5)
             
             # Clear the text - use priority LOWER than LLM (8) so LLM can set it again  
             await state.set("tts_text", "", source="tts", priority=5)
-            
-            # And in error handling:
-            await state.set("ai_speaking", "False", source="tts", priority=10)
-            await state.set("tts_ready", "False", source="tts", priority=5)
             
             print("[TTS] 🏁 TTS cycle completed - ready for next interaction")
             
@@ -332,6 +464,7 @@ async def on_tts_ready(key, value, old):
             
             # Ensure states are cleaned up on error - use higher priorities
             await state.set("ai_speaking", "False", source="tts", priority=10)
+            await state.set("interrupt_ai_speech", "false", source="tts", priority=10)
             await state.set("tts_ready", "False", source="tts", priority=10)
 
 # Main TTS listener loop

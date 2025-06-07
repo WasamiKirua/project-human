@@ -27,6 +27,10 @@
       "ai_thinking": {
         "allowed_sources": ["llm"],
         "min_priority": 5
+      },
+      "interrupt_ai_speech": {
+        "allowed_sources": ["stt", "tts"],
+        "min_priority": 10
       }
     },
 
@@ -86,6 +90,12 @@
       "ollama": {
         "_comment": "Set to true if want to use",
         "port": "11434",
+        "enabled": "false"
+      },
+
+      "lmstudio": {
+        "_comment": "Set to true if want to use",
+        "port": "1234",
         "enabled": "false"
       }
     }

@@ -41,6 +41,107 @@ except ImportError:
 silero_model = None
 vad_iterator = None
 
+class ContinuousAudioMonitor:
+    """Continuous audio monitoring for interruption detection"""
+    
+    def __init__(self):
+        self.sampling_rate = json_config['sampling_rate']
+        self.vad_threshold = json_config['vad_threshold']
+        self.channels = json_config['channels']
+        self.chunk_size = json_config['chunk_size']
+        self.is_monitoring = False
+        self.stream = None
+        self.chunk_buffer = np.array([], dtype=np.float32)
+        
+    def process_vad_chunk(self, audio_chunk):
+        """Process audio chunk with Silero VAD"""
+        if not SILERO_AVAILABLE or silero_model is None:
+            # Fallback to amplitude detection
+            return np.max(np.abs(audio_chunk)) > 0.02  # Lower threshold for interruption
+        
+        try:
+            if len(audio_chunk) == self.chunk_size:
+                speech_prob = silero_model(torch.from_numpy(audio_chunk), self.sampling_rate).item()
+                return speech_prob > self.vad_threshold
+            return False
+        except Exception as e:
+            print(f"[STT Monitor] VAD processing error: {e}")
+            return np.max(np.abs(audio_chunk)) > 0.02
+    
+    def audio_callback(self, indata, frames, time_info, status):
+        """Continuous audio monitoring callback for interruption detection"""
+        if status:
+            print(f"[STT Monitor] Audio callback status: {status}")
+        
+        audio_data = indata.flatten() if self.channels == 1 else indata[:, 0]
+        self.chunk_buffer = np.concatenate([self.chunk_buffer, audio_data])
+        
+        while len(self.chunk_buffer) >= self.chunk_size:
+            chunk = self.chunk_buffer[:self.chunk_size]
+            self.chunk_buffer = self.chunk_buffer[self.chunk_size:]
+            
+            is_speech = self.process_vad_chunk(chunk)
+            
+            if is_speech:
+                # Check if AI is currently speaking
+                ai_currently_speaking = state.get_value("ai_speaking")
+                if ai_currently_speaking == "True":
+                    print("[STT Monitor] 🗣️ User speech detected during AI speaking - triggering interruption")
+                    # Use direct Redis call instead of state.set_value to avoid asyncio issues
+                    try:
+                        full_key = "state:interrupt_ai_speech"
+                        ts = int(time.time())
+                        state.r.hset(full_key, mapping={
+                            "value": "true",
+                            "source": "stt",
+                            "priority": 10,
+                            "timestamp": ts
+                        })
+                        # Publish the message directly
+                        state.r.publish(state.pub_channel, "interrupt_ai_speech=true")
+                        print("[STT Monitor] ✅ Interruption signal sent via direct Redis")
+                    except Exception as e:
+                        print(f"[STT Monitor] ❌ Error setting interruption state: {e}")
+                    # Small delay to prevent multiple rapid triggers
+                    time.sleep(0.2)
+    
+    def start_monitoring(self):
+        """Start continuous audio monitoring"""
+        if not AUDIO_AVAILABLE or self.is_monitoring:
+            return False
+        
+        try:
+            print("[STT Monitor] 🎧 Starting continuous audio monitoring for interruptions...")
+            
+            self.stream = sd.InputStream(
+                samplerate=self.sampling_rate,
+                channels=self.channels,
+                dtype='float32',
+                blocksize=self.chunk_size,
+                callback=self.audio_callback
+            )
+            self.stream.start()
+            self.is_monitoring = True
+            print("[STT Monitor] ✅ Continuous monitoring active")
+            return True
+        except Exception as e:
+            print(f"[STT Monitor] ❌ Error starting monitoring: {e}")
+            return False
+    
+    def stop_monitoring(self):
+        """Stop continuous audio monitoring"""
+        if self.stream and self.is_monitoring:
+            try:
+                self.stream.stop()
+                self.stream.close()
+                self.is_monitoring = False
+                print("[STT Monitor] 🛑 Continuous monitoring stopped")
+            except Exception as e:
+                print(f"[STT Monitor] Error stopping monitoring: {e}")
+
+# Global continuous monitor
+continuous_monitor = None
+
 def load_config():
     config_path = 'config.json'
     if os.path.exists(config_path):
@@ -428,7 +529,8 @@ async def on_user_wants_to_talk(key, value, old):
         await state.set("user_wants_to_talk", "False", source="stt", priority=10)
         
         # Check if AI is currently speaking
-        if state.get_value("ai_speaking") == "True":
+        ai_speaking = state.get_value("ai_speaking")
+        if ai_speaking == "True":
             print("[STT] AI is speaking, waiting...")
             return
             
@@ -474,6 +576,8 @@ async def on_user_wants_to_talk(key, value, old):
         
 async def stt_listener():
     """Listen for user_wants_to_talk events"""
+    global continuous_monitor
+    
     whisper_server_url = json_config['whisper_server_url']
     sampling_rate = json_config['sampling_rate']
     amplitude_threshold = json_config['amplitude_threshold']
@@ -487,6 +591,14 @@ async def stt_listener():
     
     # Initialize Silero VAD
     silero_initialized = initialize_silero_vad()
+    
+    # Initialize and start continuous audio monitor for interruptions
+    if AUDIO_AVAILABLE and silero_initialized:
+        continuous_monitor = ContinuousAudioMonitor()
+        monitor_started = continuous_monitor.start_monitoring()
+        print(f"[STT] Continuous Interruption Monitor: {'✅ Active' if monitor_started else '❌ Failed'}")
+    else:
+        print("[STT] ⚠️ Continuous monitoring disabled (audio or VAD unavailable)")
     
     # Print startup status
     print("[STT] Speech-to-Text Component with Direct LLM Communication Started")
@@ -513,8 +625,21 @@ async def stt_listener():
     print("[STT] Using HTTP API to communicate with LLM component...")
     
     # Start the state listener in the background
-    await state.listen()
+    try:
+        await state.listen()
+    except KeyboardInterrupt:
+        print("[STT] 👋 STT component stopped by user")
+    finally:
+        # Cleanup continuous monitor
+        if continuous_monitor:
+            continuous_monitor.stop_monitoring()
 
 if __name__ == "__main__":
     json_config = load_config()
-    asyncio.run(stt_listener())
+    try:
+        asyncio.run(stt_listener())
+    except KeyboardInterrupt:
+        print("[STT] 👋 STT component stopped by user")
+        # Cleanup continuous monitor
+        if continuous_monitor:
+            continuous_monitor.stop_monitoring()
