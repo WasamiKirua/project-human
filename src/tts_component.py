@@ -42,7 +42,6 @@ class TtsComponent:
         # Validate and extract config values with defaults
         api_keys, tts_config = self.config
 
-        self.resemble_key = api_keys.get("resemble_api_key", None)
         self.replicate_key = api_keys.get("replicate_api_key", None)
         self.tts_elements = tts_config
 
@@ -54,10 +53,10 @@ class TtsComponent:
             print(f"[TTS] ❌ Replicate API key not found in config!")
 
         # Verify API keys are loaded (don't print the full key for security)
-        if self.resemble_key:
-            print(f"[TTS] ✅ Resemble API key loaded (length: {len(self.resemble_key)})")
+        if self.replicate_key:
+            print(f"[TTS] ✅ Replicate API key loaded (length: {len(self.replicate_key)})")
         else:
-            print(f"[TTS] ❌ Resemble API key not found in config!")
+            print(f"[TTS] ❌ Replicate API key not found in config!")
         
         # Initialize component
         tts_component = self
@@ -138,7 +137,7 @@ class TtsComponent:
             return None
         else:
             print(f"[TTS] ❌ Unknown TTS provider: {tts_provider}")
-            print(f"[TTS] Available providers: resemble, replicate, openai")
+            print(f"[TTS] Available providers: replicate, openai")
             return None
 
     def _generate_audio_replicate(self, text: str):

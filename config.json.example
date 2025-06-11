@@ -58,10 +58,18 @@
       "max_recording_duration": 180
     },
 
+    "comment": "TTS Providers: replicate, openai",
+
+    "tts": {
+      "_comment": "TTS Providers: replicate, openai",
+      "tts_provider": "replicate",
+      "replicate_model": "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13"
+    },
+
     "api_keys": {
       "openai_api_key": "",
       "groq_api_key": "",
-      "resemble_api_key": ""
+      "replicate_api_key": ""
     },
 
     "memory": {
@@ -89,14 +97,23 @@
 
       "ollama": {
         "_comment": "Set to true if want to use",
-        "port": "11434",
         "enabled": "false"
+        "port": "11434",
       },
 
       "lmstudio": {
         "_comment": "Set to true if want to use",
-        "port": "1234",
         "enabled": "false"
+        "port": "1234",
+      },
+
+      "vllm": {
+        "_comment": "Set to true if want to use",
+        "enabled": "false",
+        "bearer": "",
+        "model": "", 
+        "vast_ai_ip": "",
+        "vast_ai_port": ""
       }
     }
   }

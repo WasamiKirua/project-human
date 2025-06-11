@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import traceback
-import aiohttp
 from datetime import datetime
 from redis_state import RedisState
 from aiohttp import web
@@ -82,7 +81,6 @@ class LLMComponent:
         
         except Exception as e:
             print(f"[LLM] ❌ Error in LLM processing: {e}")
-            import traceback
             traceback.print_exc()
             
             # Ensure thinking state is cleared on error
@@ -131,23 +129,32 @@ class LLMComponent:
             return []
     
     async def generate_response(self, transcript, context):
-        """Generate AI response using OpenAI API with full context"""
+        """Generate AI response using configured LLM provider"""
         print("[LLM] 🤖 Generating response...")
 
-        # Retrieve LLM Config from JSON
-        port = None
-        api_key = None
-        model = None
+        # Check for vLLM first (remote)
+        vllm_config = self.config.get('vllm', {})
+        if vllm_config.get('enabled') == 'true':
+            return await self._generate_response_vllm(transcript, context, vllm_config)
         
-        for llm, config in self.config.items():
+        # Check for local LLM providers
+        for llm_name, config in self.config.items():
             if config.get('enabled') == 'true':
-                port = config.get('port')
-                api_key = config.get('api_key')
-                model = config.get('model')
-                break
+                return await self._generate_response_local(transcript, context, config, llm_name)
         
-        if not port:
-            raise ValueError("No enabled LLM configuration found")
+        raise ValueError("No enabled LLM configuration found")
+    
+    async def _generate_response_vllm(self, transcript, context, config):
+        """Generate AI response using vLLM via Vast.ai"""
+        print("[LLM] 🚀 Using vLLM provider...")
+        
+        vast_ai_ip = config.get('vast_ai_ip')
+        vast_ai_port = config.get('vast_ai_port')
+        bearer_token = config.get('bearer')
+        model = config.get('model')
+        
+        if not all([vast_ai_ip, vast_ai_port, bearer_token, model]):
+            raise ValueError("Missing vLLM configuration: need vast_ai_ip, vast_ai_port, bearer, and model")
         
         # Build system prompt with context
         system_prompt = self.build_system_prompt(context)
@@ -164,14 +171,60 @@ class LLMComponent:
         # Add current user input
         messages.append({"role": "user", "content": transcript})
 
-        # Use async context manager for automatic cleanup
+        print(f"[LLM] 🌐 Connecting to vLLM at {vast_ai_ip}:{vast_ai_port}")
+        
+        # Use AsyncOpenAI client to connect to vLLM endpoint
+        base_url = f'http://{vast_ai_ip}:{vast_ai_port}/v1'
+        
+        async with AsyncOpenAI(base_url=base_url, api_key=bearer_token) as client:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=2048,
+                temperature=0.7,
+                timeout=30.0
+            )
+            print("[LLM] ✅ vLLM response received successfully")
+            print("[LLM] 🔒 AsyncOpenAI client automatically closed")
+            return response.choices[0].message.content
+    
+    async def _generate_response_local(self, transcript, context, config, llm_name):
+        """Generate AI response using local LLM providers"""
+        print(f"[LLM] 🏠 Using local {llm_name} provider...")
+        
+        port = config.get('port')
+        api_key = config.get('api_key', 'not-needed')
+        model = config.get('model')
+        
+        if not all([port, model]):
+            raise ValueError(f"Missing {llm_name} configuration: need port and model")
+        
+        # Build system prompt with context
+        system_prompt = self.build_system_prompt(context)
+        
+        # Build conversation messages with context
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+        
+        # Add current session
+        for item in context["current_session"]:
+            messages.append(item)
+        
+        # Add current user input
+        messages.append({"role": "user", "content": transcript})
+
+        print(f"[LLM] 🏠 Connecting to {llm_name} at localhost:{port}")
+        
         async with AsyncOpenAI(base_url=f'http://localhost:{port}/v1', api_key=api_key) as client:
             response = await client.chat.completions.create(
                 model=model,
                 messages=messages,
                 max_tokens=2048,
-                temperature=0.7
+                temperature=0.7,
+                timeout=30.0
             )
+            print(f"[LLM] ✅ {llm_name} response received successfully")
             print("[LLM] 🔒 AsyncOpenAI client automatically closed")
             return response.choices[0].message.content
     
@@ -265,7 +318,6 @@ class LLMComponent:
 
         except Exception as e:
             print(f"[LLM] ❌ Error triggering TTS: {e}")
-            import traceback
             traceback.print_exc()
             return False
 
