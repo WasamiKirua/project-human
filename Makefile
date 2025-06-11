@@ -1,7 +1,7 @@
 # Project Human Redis - Makefile
 # AI Assistant with STT, TTS, LLM, and GUI components
 
-.PHONY: help setup start stop status clean gui stt tts llm all-components check-deps check-services logs
+.PHONY: help setup start stop status clean gui gui-video stt tts llm all-components check-deps check-services logs
 
 # Default target
 help:
@@ -15,7 +15,8 @@ help:
 	@echo "  clean           - Stop services and clean up"
 	@echo ""
 	@echo "Individual components:"
-	@echo "  gui             - Start GUI component only"
+	@echo "  gui             - Start GUI component only (original)"
+	@echo "  gui-video       - Start GUI component with video support"
 	@echo "  stt             - Start Speech-to-Text component only"
 	@echo "  tts             - Start Text-to-Speech component only"
 	@echo "  llm             - Start LLM component only"
@@ -124,8 +125,12 @@ check-services:
 
 # Component management
 gui:
-	@echo "Starting GUI component..."
+	@echo "Starting GUI component (original)..."
 	@source .venv/bin/activate && python src/gui_main.py
+
+gui-video:
+	@echo "Starting GUI component with video support..."
+	@source .venv/bin/activate && python src/gui_main_video.py
 
 stt:
 	@echo "Starting Speech-to-Text component..."

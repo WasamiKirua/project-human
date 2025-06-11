@@ -5,7 +5,7 @@ import asyncio
 import requests
 import base64
 import re
-from resemble import Resemble
+import replicate
 from redis_state import RedisState
 from redis_client import create_redis_client
 
@@ -40,11 +40,20 @@ class TtsComponent:
         print(f"[TTS] Loaded config: {self.config}")
 
         # Validate and extract config values with defaults
-        api_keys = self.config
+        api_keys, tts_config = self.config
 
         self.resemble_key = api_keys.get("resemble_api_key", None)
+        self.replicate_key = api_keys.get("replicate_api_key", None)
+        self.tts_elements = tts_config
 
-        # Verify API key is loaded (don't print the full key for security)
+        # Initialize Replicate client if API key is available
+        if self.replicate_key:
+            os.environ["REPLICATE_API_TOKEN"] = self.replicate_key
+            print(f"[TTS] ✅ Replicate API key loaded (length: {len(self.replicate_key)})")
+        else:
+            print(f"[TTS] ❌ Replicate API key not found in config!")
+
+        # Verify API keys are loaded (don't print the full key for security)
         if self.resemble_key:
             print(f"[TTS] ✅ Resemble API key loaded (length: {len(self.resemble_key)})")
         else:
@@ -56,12 +65,14 @@ class TtsComponent:
     def load_config(self):
         config_path = 'config.json'
         api_keys = {} # Default
+        tts_config = {}
         
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:
                     config = json.load(f)
                     api_keys = config.get("api_keys", {})
+                    tts_config = config.get("tts", {})
             except Exception as e:
                 print(f"[TTS] ❌ Error loading config: {e}")
                 # Use defaults if config loading fails
@@ -73,17 +84,16 @@ class TtsComponent:
                     with open(parent_config_path, 'r') as f:
                         config = json.load(f)
                         api_keys = config.get("api_keys", {})
+                        tts_config = config.get("tts", {})
                 except Exception as e:
                     print(f"[TTS] ❌ Error loading config from parent dir: {e}")
             else:
                 print(f"[TTS] ⚠️ Config file not found in current or parent directory")
             
-        return api_keys
+        return api_keys, tts_config
 
     def sanitize_text_for_tts(self, text: str) -> str:
         """Sanitize text to prevent SSML validation errors"""
-        import re
-        
         # Remove or replace problematic characters that could be interpreted as SSML
         sanitized = text
         
@@ -108,136 +118,86 @@ class TtsComponent:
         return sanitized
 
     def generate_audio(self, text: str):
-        """Generate audio using Resemble AI API with retry logic and cleanup"""
-        # Sanitize text before processing
+        """Generate audio using configured TTS provider"""
         sanitized_text = self.sanitize_text_for_tts(text)
-        
         print(f"[TTS] 🎤 Generating audio from text: {sanitized_text[:60]}...")
 
-        if not self.resemble_key:
-            print("[TTS] ❌ No Resemble API key available")
+        # Get the active TTS provider from config
+        tts_provider = self.tts_elements.get('tts_provider', None)
+        
+        if not tts_provider:
+            print("[TTS] ❌ No tts_provider specified in configuration")
             return None
 
-        data = {
-            "voice_uuid": "e28236ee",
-            "data": sanitized_text,  # Use sanitized text
-            "sample_rate": 48000,
-            "output_format": "wav"
-        }
-        headers = {
-            "Authorization": f"Bearer {self.resemble_key}",
-            "Content-Type": "application/json"
-        }
-
-        max_attempts = 15
-        wait_time = 1
+        print(f"[TTS] 🎯 Using TTS provider: {tts_provider}")
         
-        # Add small delay to prevent rapid API calls after interruption
-        time.sleep(0.5)
+        if tts_provider == 'replicate':
+            return self._generate_audio_replicate(sanitized_text)
+        elif tts_provider == 'openai':
+            print(f"[TTS] ⚠️ OpenAI TTS not implemented yet")
+            return None
+        else:
+            print(f"[TTS] ❌ Unknown TTS provider: {tts_provider}")
+            print(f"[TTS] Available providers: resemble, replicate, openai")
+            return None
 
-        for attempt in range(1, max_attempts + 1):
-            try:
-                print(f"[TTS] 🚀 Attempt {attempt}/{max_attempts} - Calling Resemble API...")
+    def _generate_audio_replicate(self, text: str):
+        """Generate audio using Replicate Chatterbox TTS"""
+        if not self.replicate_key:
+            print("[TTS] ❌ No Replicate API key available")
+            return None
 
-                response = requests.post("https://f.cluster.resemble.ai/synthesize", 
-                                       headers=headers, json=data, timeout=30)
+        try:
+            # Get model from config or use default
+            model_name = self.tts_elements.get('replicate_model', 'thomcle/chatterbox-tts')
+            
 
-                if response.status_code == 200:
-                    try:
-                        result = response.json()
-                        print(f"[TTS] ✅ Success on attempt {attempt}")
+            print(f"[TTS] 🤖 Using Replicate model: {model_name}")
 
-                        if result.get("success"):
-                            # Clean up existing files FIRST when we get a successful API response
-                            self.cleanup_existing_audio_files()
+            # Prepare input for the model
+            model_input = {
+                "text": text,
+                "speed": 1,
+                "voice": "af_sky"
+            }
 
-                            audio_base64 = result.get("audio_content")
-                            if audio_base64:
-                                audio_bytes = base64.b64decode(audio_base64.strip())
+            print("[TTS] 🚀 Calling Replicate API...")
+            
+            # Run the model
+            output = replicate.run(model_name, input=model_input)
+            
+            if output:
+                print(f"[TTS] ✅ Replicate API returned audio URL: {output}")
+                
+                # Clean up existing files before downloading new one
+                self.cleanup_existing_audio_files()
+                
+                # Download the audio file
+                print("[TTS] 📥 Downloading audio file...")
+                response = requests.get(output, timeout=30)
+                response.raise_for_status()
+                
+                audio_filename = "output.wav"
+                with open(audio_filename, "wb") as f:
+                    f.write(response.content)
+                
+                print(f"[TTS] ✅ Audio downloaded and saved to {audio_filename}")
+                return audio_filename
+            else:
+                print("[TTS] ❌ Replicate API returned no output")
+                return None
 
-                                # Option 1: Simple filename (since we cleanup)
-                                audio_filename = "output.wav"
-
-                                # Option 2: Unique filename (comment out line above and use this)
-                                # timestamp = int(time.time() * 1000)
-                                # audio_filename = f"tts_audio_{timestamp}.wav"
-
-                                with open(audio_filename, "wb") as f:
-                                    f.write(audio_bytes)
-                                print(f"[TTS] ✅ Audio saved to {audio_filename} (Duration: {result.get('duration', 'Unknown')}s)")
-                                return audio_filename
-                            else:
-                                print(f"[TTS] ❌ No audio data in response (attempt {attempt})")
-                        else:
-                            print(f"[TTS] ❌ API reported failure on attempt {attempt}:")
-                            print(f"[TTS] Issues: {result.get('issues', [])}")
-
-                    except requests.exceptions.JSONDecodeError as e:
-                        print(f"[TTS] ❌ JSON parsing error on attempt {attempt}: {e}")
-
-                elif response.status_code == 400:
-                    # 400 errors are usually validation issues that won't be fixed by retrying
-                    print(f"[TTS] ❌ Validation error (400) - not retrying")
-                    try:
-                        error_details = response.json()
-                        error_name = error_details.get("error_name", "Unknown")
-                        error_message = error_details.get("message", "No message")
-                        print(f"[TTS] Error details: {error_name} - {error_message}")
-                        
-                        # If it's an SSML error, we could try to sanitize further or fall back
-                        if "SSML" in error_name or "SSML" in error_message:
-                            print("[TTS] ⚠️ SSML validation failed despite sanitization")
-                            
-                    except:
-                        print(f"[TTS] Response: {response.text}")
-                    
-                    return None  # Don't retry 400 errors
-
-                elif response.status_code in [500, 502, 503, 504]:
-                    print(f"[TTS] ⚠️ Server error {response.status_code} on attempt {attempt}/{max_attempts}")
-                    if attempt < max_attempts:
-                        # Exponential backoff for server errors after interruption
-                        backoff_time = wait_time * (2 ** min(attempt - 1, 3))  # Cap at 8 seconds
-                        print(f"[TTS] 🔄 Waiting {backoff_time}s before retry...")
-                        time.sleep(backoff_time)
-                        continue
-                    else:
-                        print(f"[TTS] ❌ Max attempts reached, giving up")
-                        return None
-
-                else:
-                    print(f"[TTS] ❌ API Error {response.status_code} on attempt {attempt}")
-                    print(f"[TTS] Response: {response.text}")
-                    if attempt < max_attempts:
-                        print(f"[TTS] 🔄 Waiting {wait_time}s before retry...")
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        print(f"[TTS] ❌ Max attempts reached")
-                        return None
-
-            except requests.exceptions.Timeout:
-                print(f"[TTS] ⏰ Timeout on attempt {attempt}")
-                if attempt < max_attempts:
-                    print(f"[TTS] 🔄 Waiting {wait_time}s before retry...")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    print(f"[TTS] ❌ Max attempts reached due to timeouts")
-                    return None
-
-            except Exception as e:
-                print(f"[TTS] ❌ Error on attempt {attempt}: {e}")
-                if attempt < max_attempts:
-                    print(f"[TTS] 🔄 Waiting {wait_time}s before retry...")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    print(f"[TTS] ❌ Max attempts reached due to errors")
-                    return None
-
-        print(f"[TTS] ❌ All {max_attempts} attempts failed")
-        return None
+        except replicate.exceptions.ReplicateError as e:
+            print(f"[TTS] ❌ Replicate API error: {e}")
+            return None
+        except requests.exceptions.RequestException as e:
+            print(f"[TTS] ❌ Error downloading audio file: {e}")
+            return None
+        except Exception as e:
+            print(f"[TTS] ❌ Unexpected error in Replicate TTS: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def cleanup_existing_audio_files(self):
         """Clean up any existing TTS audio files before generating new ones"""
@@ -273,41 +233,6 @@ class TtsComponent:
                 
         except Exception as e:
             print(f"[TTS] ⚠️ Error during cleanup: {e}")
-
-    async def play_audio_pygame_async(self, filename):
-        """Async version of play audio using pygame with interruption detection"""
-        try:
-            # Clear any interruption state before starting
-            await state.set("interrupt_ai_speech", "false", source="tts", priority=10)
-            
-            pygame.mixer.music.load(filename)
-            pygame.mixer.music.play()
-            
-            # Wait for playback to complete or interruption
-            while pygame.mixer.music.get_busy():
-                # Check for interruption signal
-                interrupt_value = state.get_value("interrupt_ai_speech")
-                if interrupt_value == "true":
-                    pygame.mixer.music.stop()
-                    print("[TTS] 🛑 Audio interrupted by user speech")
-                    return "interrupted"
-                    
-                # Legacy check for human_speaking (keeping for compatibility)
-                human_speaking = state.get_value("human_speaking")
-                if human_speaking == "True":
-                    pygame.mixer.music.stop()
-                    print("[TTS] 🛑 Playback interrupted by human")
-                    return "interrupted"
-                    
-                # Use asyncio.sleep instead of time.sleep for async compatibility
-                await asyncio.sleep(0.1)  # 100ms polling interval
-                
-            print("[TTS] ✅ Playback finished successfully")
-            return "completed"
-            
-        except Exception as e:
-            print(f"[TTS] ❌ Pygame playback error: {e}")
-            return "error"
 
     def play_audio_pygame(self, filename):
         """Play audio using pygame with interruption detection"""
@@ -422,15 +347,14 @@ async def on_tts_ready(key, value, old):
                 return
                 
             print(f"[TTS] 📝 Text to speak: '{text_to_speak[:100]}...'")
-            
-            # Set ai_speaking state - use higher priority
-            await state.set("ai_speaking", "True", source="tts", priority=10)
-            print("[TTS] 🎤 AI is now 'speaking'")
-            
-            # Generate audio using Resemble API
+                    
             audio_file = tts_component.generate_audio(text_to_speak)
             
             if audio_file:
+                # Set ai_speaking state RIGHT BEFORE playing - use higher priority
+                await state.set("ai_speaking", "True", source="tts", priority=10)
+                print("[TTS] 🎤 AI is now 'speaking' - starting playback")
+                
                 # Play the generated audio
                 playback_result = tts_component.play_audio(audio_file)
                 
@@ -440,11 +364,11 @@ async def on_tts_ready(key, value, old):
                     print("[TTS] ⚠️ Playback was interrupted by user")
                 else:
                     print("[TTS] ❌ Playback failed or encountered an error")
+                
+                # Reset ai_speaking flag after playback ends - keep high priority for immediate effect
+                await state.set("ai_speaking", "False", source="tts", priority=10)
             else:
-                print("[TTS] ❌ Audio generation failed")
-            
-            # Reset ai_speaking flag - keep high priority for immediate effect
-            await state.set("ai_speaking", "False", source="tts", priority=10)
+                print("[TTS] ❌ Audio generation failed - not setting ai_speaking")
             
             # Reset interrupt flag to clear any pending interruptions
             await state.set("interrupt_ai_speech", "false", source="tts", priority=10)

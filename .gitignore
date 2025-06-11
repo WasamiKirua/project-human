@@ -28,5 +28,8 @@ config.json
 # WAVs
 *.wav
 
+# MP4
+*.mp4
+
 # Logs
 logs/

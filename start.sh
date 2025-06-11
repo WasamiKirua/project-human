@@ -201,6 +201,8 @@ start_component() {
     
     if [ "$component" = "gui" ]; then
         script="gui_main.py"
+    elif [ "$component" = "gui-video" ]; then
+        script="gui_main_video.py"
     fi
     
     log "🐍 Starting $component component..."
@@ -406,7 +408,8 @@ show_help() {
     echo "  all-components        - Start everything (services + whisper + components)"
     echo
     echo -e "${YELLOW}Individual Components:${NC}"
-    echo "  gui                   - Start GUI component only"
+    echo "  gui                   - Start GUI component only (original)"
+    echo "  gui-video             - Start GUI component with video support"
     echo "  stt                   - Start Speech-to-Text component only"
     echo "  tts                   - Start Text-to-Speech component only"
     echo "  llm                   - Start LLM component only"
@@ -465,6 +468,10 @@ case "${1:-help}" in
     gui)
         check_dependencies
         start_component "gui"
+        ;;
+    gui-video)
+        check_dependencies
+        start_component "gui-video"
         ;;
     stt)
         check_dependencies

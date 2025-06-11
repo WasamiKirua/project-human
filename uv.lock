@@ -1280,7 +1280,7 @@ dependencies = [
     { name = "pygame" },
     { name = "pyside6" },
     { name = "redis" },
-    { name = "resemble" },
+    { name = "replicate" },
     { name = "silero-vad" },
     { name = "sounddevice" },
     { name = "sqlite-vec" },
@@ -1301,7 +1301,7 @@ requires-dist = [
     { name = "pygame", specifier = ">=2.6.1" },
     { name = "pyside6", specifier = ">=6.9.0" },
     { name = "redis", specifier = ">=6.1.0" },
-    { name = "resemble", specifier = ">=1.5.0" },
+    { name = "replicate", specifier = ">=1.0.7" },
     { name = "silero-vad", specifier = ">=5.1.2" },
     { name = "sounddevice", specifier = ">=0.5.2" },
     { name = "sqlite-vec", specifier = ">=0.1.6" },
@@ -1683,6 +1683,21 @@ wheels = [
 ]
 
 [[package]]
+name = "replicate"
+version = "1.0.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "packaging" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4b/fd/caf6c59a6b8007366bd52ab5a320bf8d828f3860a60039309cfc0e375ec9/replicate-1.0.7.tar.gz", hash = "sha256:d88cb2c37ba39fb370c87fc3291601c67aae64bb918a20a85b5ce399c23ee84c", size = 62226, upload-time = "2025-05-27T11:29:08.111Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/5a/b3aa02a11a33de08e7771579154af3193decfb9d923b30b14c17b4e8bbce/replicate-1.0.7-py3-none-any.whl", hash = "sha256:667c50a9eb83be17de6278ff89483102b3b50f49a2c7fbcaa2e2b14df13816f9", size = 48626, upload-time = "2025-05-27T11:29:06.801Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.32.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1695,18 +1710,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz", hash = "sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760", size = 131218, upload-time = "2024-05-29T15:37:49.536Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/9b/335f9764261e915ed497fcdeb11df5dfd6f7bf257d4a6a2a686d80da4d54/requests-2.32.3-py3-none-any.whl", hash = "sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6", size = 64928, upload-time = "2024-05-29T15:37:47.027Z" },
-]
-
-[[package]]
-name = "resemble"
-version = "1.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/74/13/f54f4d60fb2a9f5dbfbc1025a62861b9a2749449a7e16c64b5e3ae5fc68e/resemble-1.5.0.tar.gz", hash = "sha256:446966d06cab1f56b05b00a97b8f751e1434aff62241cc057ca5afdb54ee743f", size = 9802, upload-time = "2024-12-02T22:07:35.582Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/69/f5c34c945012c7654d6f1b222aa52474d7720033a9662a66a518738212c6/resemble-1.5.0-py3-none-any.whl", hash = "sha256:03ef795e5e3e28d40998292eb4e38b730dffe7565bd5f925323f1af2bb848df6", size = 7815, upload-time = "2024-12-02T22:07:33.836Z" },
 ]
 
 [[package]]
