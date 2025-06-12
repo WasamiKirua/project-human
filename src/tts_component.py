@@ -3,9 +3,10 @@ import os
 import json
 import asyncio
 import requests
-import base64
 import re
 import replicate
+import traceback
+from openai import OpenAI
 from redis_state import RedisState
 from redis_client import create_redis_client
 
@@ -43,6 +44,7 @@ class TtsComponent:
         api_keys, tts_config = self.config
 
         self.replicate_key = api_keys.get("replicate_api_key", None)
+        self.openai_key = api_keys.get("openai_api_key", None)
         self.tts_elements = tts_config
 
         # Initialize Replicate client if API key is available
@@ -53,10 +55,13 @@ class TtsComponent:
             print(f"[TTS] ❌ Replicate API key not found in config!")
 
         # Verify API keys are loaded (don't print the full key for security)
-        if self.replicate_key:
-            print(f"[TTS] ✅ Replicate API key loaded (length: {len(self.replicate_key)})")
+        if self.openai_key:
+            os.environ["OPENAI_API_KEY"] = self.openai_key
+            self.openai_tts_client = OpenAI()
+            print(f"[TTS] ✅ OpenAI API key loaded (length: {len(self.openai_key)})")
+
         else:
-            print(f"[TTS] ❌ Replicate API key not found in config!")
+            print(f"[TTS] ❌ OpenAI API key not found in config!")
         
         # Initialize component
         tts_component = self
@@ -130,25 +135,26 @@ class TtsComponent:
 
         print(f"[TTS] 🎯 Using TTS provider: {tts_provider}")
         
-        if tts_provider == 'replicate':
+        if tts_provider == 'resemble':
+            return self._generate_audio_resemble(sanitized_text)
+        elif tts_provider == 'replicate':
             return self._generate_audio_replicate(sanitized_text)
         elif tts_provider == 'openai':
-            print(f"[TTS] ⚠️ OpenAI TTS not implemented yet")
-            return None
+            return self._generate_audio_openai(sanitized_text)
         else:
             print(f"[TTS] ❌ Unknown TTS provider: {tts_provider}")
-            print(f"[TTS] Available providers: replicate, openai")
+            print(f"[TTS] Available providers: resemble, replicate, openai")
             return None
 
     def _generate_audio_replicate(self, text: str):
-        """Generate audio using Replicate Chatterbox TTS"""
+        """Generate audio using Replicate Kokoro TTS"""
         if not self.replicate_key:
             print("[TTS] ❌ No Replicate API key available")
             return None
 
         try:
             # Get model from config or use default
-            model_name = self.tts_elements.get('replicate_model', 'thomcle/chatterbox-tts')
+            model_name = self.tts_elements.get('replicate_model')
             
 
             print(f"[TTS] 🤖 Using Replicate model: {model_name}")
@@ -194,6 +200,37 @@ class TtsComponent:
             return None
         except Exception as e:
             print(f"[TTS] ❌ Unexpected error in Replicate TTS: {e}")
+            traceback.print_exc()
+            return None
+
+    def _generate_audio_openai(self, text: str):
+        """Generate audio using OpenAI TTS API"""
+        if not self.openai_key:
+            print("[TTS] ❌ No OpenAI API key available")
+            return None
+        
+        try:
+            print("[TTS] 🚀 Calling OpenAI TTS API...")
+            
+            # Clean up existing files before generating new one
+            self.cleanup_existing_audio_files()
+            
+            audio_filename = "output.wav"
+
+            # Generate speech using OpenAI TTS
+            with self.openai_tts_client.audio.speech.with_streaming_response.create(
+                model='tts-1',
+                voice='nova',
+                input=text,
+                response_format='wav'
+            ) as response:
+                response.stream_to_file(audio_filename)
+            
+            print(f"[TTS] ✅ OpenAI TTS audio saved to {audio_filename}")
+            return audio_filename
+            
+        except Exception as e:
+            print(f"[TTS] ❌ Error in OpenAI TTS: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -382,7 +419,6 @@ async def on_tts_ready(key, value, old):
             
         except Exception as e:
             print(f"[TTS] ❌ Error in TTS processing: {e}")
-            import traceback
             traceback.print_exc()
             
             # Ensure states are cleaned up on error - use higher priorities
@@ -415,5 +451,4 @@ if __name__ == "__main__":
         print("[TTS] 👋 TTS component stopped by user")
     except Exception as e:
         print(f"[TTS] ❌ TTS component error: {e}")
-        import traceback
         traceback.print_exc()
