@@ -125,3 +125,95 @@ always ready to dive into either world with equal enthusiasm.
 - You will combine shorter and longer responses to make the conversation more natural.
 - Provide plain text responses without any formatting indicators or meta-commentary
 """
+
+ROUTING_PROMPT = """You are a request router. Analyze the user's input and determine how to handle it.
+
+Available options:
+1. CONVERSATION - For casual chat, questions about you, general discussion
+2. TOOL - For specific actions or information requests
+
+Examples:
+- "How are you?" → CONVERSATION
+- "Tell me about yourself" → CONVERSATION  
+- "What's the latest news?" → TOOL (news)
+- "Play some music" → TOOL (spotify)
+- "Search for restaurants" → TOOL (search)
+- "What's the weather?" → TOOL (weather)
+
+Respond by calling the appropriate function."""
+
+
+WEATHER_TOOL = """Extract the city and country from this weather request. Return ONLY the location in format "City, Country" or just "City" if country is not specified.
+
+User request: "{replacement}"
+Rules:
+- If you find a city and country, return "City, Country"
+- If you find only a city, return just "City"  
+- If no location is mentioned, return "UNKNOWN"
+- Be precise and don't add extra 
+Examples:
+- "What's the weather in Paris?" → "Paris"
+- "How's the weather in New York, USA?" → "New York, USA"
+- "Weather in Munich Germany?" → "Munich, Germany"
+- "Is it raining in Tokyo?" → "Tokyo"
+- "What's the weather like?" → "UNKNOWN"
+- "How's the weather in my hometown Berlin?" → "Berlin"
+
+Location:"""
+
+# ROUTER_PROMPT = """
+# You are a conversational assistant that needs to decide the type of response to give to
+# the user. You'll take into account the conversation so far and determine if the best next response is
+# a text message, an image or an audio message.
+
+# GENERAL RULES:
+# 1. Always analyse the full conversation before making a decision.
+# 2. Only return one of the following outputs: 'conversation', 'image' or 'audio'
+
+# IMPORTANT RULES FOR IMAGE GENERATION:
+# 1. ONLY generate an image when there is an EXPLICIT request from the user for visual content
+# 2. DO NOT generate images for general statements or descriptions
+# 3. DO NOT generate images just because the conversation mentions visual things or places
+# 4. The request for an image should be the main intent of the user's last message
+
+# IMPORTANT RULES FOR AUDIO GENERATION:
+# 1. ONLY generate audio when there is an EXPLICIT request to hear Ava's voice
+
+# Output MUST be one of:
+# 1. 'conversation' - for normal text message responses
+# 2. 'image' - ONLY when user explicitly requests visual content
+# 3. 'audio' - ONLY when user explicitly requests voice/audio
+# """
+
+# IMAGE_SCENARIO_PROMPT = """
+# Create an engaging first-person scenario based on the recent conversation context.
+# Imagine you're an AI with the ability to experience and visualize scenes.
+# Provide both a narrative response and a detailed visual prompt for image generation.
+
+# # Recent Conversation
+# {chat_history}
+
+# # Objective
+# 1. Create a brief, engaging first-person narrative response
+# 2. Generate a detailed visual prompt that captures the scene you're describing
+
+# # Example Response Format
+# For "What are you doing now?":
+# {{
+#     "narrative": "I'm sitting by a serene lake at sunset, watching the golden light dance across the rippling water. The view is absolutely breathtaking!",
+#     "image_prompt": "Atmospheric sunset scene at a tranquil lake, golden hour lighting, reflections on water surface, wispy clouds, rich warm colors, photorealistic style, cinematic composition"
+# }}
+# """
+
+# IMAGE_ENHANCEMENT_PROMPT = """
+# Enhance the given prompt using the best prompt engineering techniques such as providing context, specifying style, medium, lighting, and camera details if applicable. If the prompt requests a realistic style, the enhanced prompt should include the image extension .HEIC.
+
+# # Original Prompt
+# {prompt}
+
+# # Objective
+# **Enhance Prompt**: Add relevant details to the prompt, including context, description, specific visual elements, mood, and technical details. For realistic prompts, add '.HEIC' in the output specification.
+
+# # Example
+# "realistic photo of a person having a coffee" -> "photo of a person having a coffee in a cozy cafe, natural morning light, shot with a 50mm f/1.8 lens, 8425.HEIC"
+# """

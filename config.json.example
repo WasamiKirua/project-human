@@ -58,8 +58,6 @@
       "max_recording_duration": 180
     },
 
-    "comment": "TTS Providers: replicate, openai",
-
     "tts": {
       "_comment": "TTS Providers: replicate, openai",
       "tts_provider": "replicate",
@@ -69,6 +67,7 @@
     "api_keys": {
       "openai_api_key": "",
       "groq_api_key": "",
+      "open_router": "",
       "replicate_api_key": ""
     },
 
@@ -86,6 +85,11 @@
       "gaming": ""
     },
 
+    "router": {
+      "provider": "openrouter",
+      "models": "anthropic/claude-3-haiku,openai/gpt-4o-mini,google/gemini-flash-1.5",
+    },
+
     "llm": {
       "llama_cpp": {
         "_comment": "Set to true if want to use",
@@ -97,7 +101,7 @@
 
       "ollama": {
         "_comment": "Set to true if want to use",
-        "enabled": "false"
+        "enabled": "false",
         "port": "11434",
       },
 
@@ -114,6 +118,14 @@
         "model": "", 
         "vast_ai_ip": "",
         "vast_ai_port": ""
+      },
+
+      "tools": {
+        "weather": {
+          "api_key": "",
+          "base_url": "https://api.weatherstack.com/",
+          "default_location": "Tokyo, Japan"
+        }
       }
     }
   }

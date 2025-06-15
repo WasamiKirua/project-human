@@ -7,7 +7,8 @@ from redis_state import RedisState
 from aiohttp import web
 from openai import AsyncOpenAI
 from memory_component import MemoryComponent
-from utils.prompts import CHARACTER_CARD_PROMPT
+from utils.prompts import CHARACTER_CARD_PROMPT, ROUTING_PROMPT
+from utils.tools import ToolManager
 from redis_client import create_redis_client
 
 # Redis config & state
@@ -31,11 +32,29 @@ class LLMComponent:
         self.short_term_memory = []  # Recent conversations
         self.long_term_memory = []   # Important/frequent topics
         self.memory_component = MemoryComponent()
+
+        # Add router configuration loading
+        self.router_config = self.load_router_config()
+        self.openrouter_client = self.init_openrouter_client()
+        self.routing_tools = self.define_routing_tools()
         
         print("[LLM] LLM Component initialized with in-memory context")
+
+    def load_router_config(self):
+        """Load router configuration"""
+        config_path = 'config.json'
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    return config.get("router", {}), config.get("api_keys", {})
+            except Exception as e:
+                print(f"[LLM] Error loading router config: {e}")
+                return {}, {}
+        return {}, {}
     
     def load_config(self):
-        """Load configuration from config.json"""
+        """Load llm configuration"""
         config_path = 'config.json'
         if os.path.exists(config_path):
             try:
@@ -47,6 +66,125 @@ class LLMComponent:
                 return {}
         return {}
     
+    def init_openrouter_client(self):
+        """Initialize OpenRouter client"""
+
+        api_keys = self.router_config
+        openrouter_key = api_keys[1]['open_router']
+        
+        if not openrouter_key:
+            print("[LLM] ❌ OpenRouter API key not found!")
+            return None
+            
+        return AsyncOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=openrouter_key
+        )
+
+    def define_routing_tools(self):
+        """Define tools for routing classification"""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "handle_conversation",
+                    "description": "Handle casual conversation, questions, and general chat",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "use_tool",
+                    "description": "Use a specific tool or service for information/actions",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "tool_type": {
+                                "type": "string",
+                                "enum": ["news", "spotify", "search", "weather"],
+                                "description": "Type of tool to use"
+                            },
+                            "reasoning": {
+                                "type": "string",
+                                "description": "Why this tool is needed"
+                            }
+                        },
+                        "required": ["tool_type"]
+                    }
+                }
+            }
+        ]
+    
+    async def route_request(self, transcript):
+        """Route request using OpenRouter"""
+        if not self.openrouter_client:
+            print("[LLM] ❌ OpenRouter client not available, defaulting to conversation")
+            return {"type": "conversation"}
+        
+        try:
+            router_config, _ = self.router_config
+            models_string = router_config.get("models")
+
+            # Parse comma-separated models
+            models_list = [model.strip() for model in models_string.split(",")]
+            primary_model = models_list[0]  # First model for 'model' parameter
+            
+            print(f"[LLM] 🔀 Routing request with model: {primary_model}, fallbacks: {models_list[1:]}")
+            
+            response = await self.openrouter_client.chat.completions.create(
+                model=primary_model,
+                extra_body={
+                    "models": models_list
+                },
+                messages=[
+                    {"role": "system", "content": ROUTING_PROMPT},
+                    {"role": "user", "content": transcript}
+                ],
+                tools=self.routing_tools,
+                tool_choice="auto"
+            )
+            
+            # Parse the response
+            message = response.choices[0].message
+            
+            if message.tool_calls:
+                tool_call = message.tool_calls[0]
+                function_name = tool_call.function.name
+                
+                if function_name == "handle_conversation":
+                    print("[LLM] 🗣️ Routed to: CONVERSATION")
+                    return {"type": "conversation"}
+                    
+                elif function_name == "use_tool":
+                    try:
+                        args = json.loads(tool_call.function.arguments)
+                        tool_type = args.get("tool_type")
+                        reasoning = args.get("reasoning", "")
+                        
+                        print(f"[LLM] 🔧 Routed to: TOOL ({tool_type}) - {reasoning}")
+                        return {
+                            "type": "tool",
+                            "tool_type": tool_type,
+                            "reasoning": reasoning
+                        }
+                    except json.JSONDecodeError:
+                        print("[LLM] ❌ Error parsing tool arguments, defaulting to conversation")
+                        return {"type": "conversation"}
+            
+            # Default to conversation if no tool calls
+            print("[LLM] 🗣️ No tool calls, defaulting to: CONVERSATION")
+            return {"type": "conversation"}
+            
+        except Exception as e:
+            print(f"[LLM] ❌ Error in routing: {e}")
+            print("[LLM] 🗣️ Defaulting to: CONVERSATION")
+            return {"type": "conversation"}
+    
     async def process_transcript(self, transcript):
         """Process transcript directly from STT - main entry point"""
         print(f"[LLM] 📥 Received transcript directly: '{transcript}'")
@@ -54,39 +192,138 @@ class LLMComponent:
         try:
             # Set thinking state
             await state.set("ai_thinking", "True", source="llm", priority=10)
-            
-            # Build context from memory systems
-            context = await self.build_context(transcript)
-            print(f"[LLM] Built context with {len(context['relevant_memories'])} semantic memories")
-            
-            # Generate response
-            response = await self.generate_response(transcript, context)
-            print(f"[LLM] Generated response: '{response[:100]}...'")
-            
-            # Update memory systems
-            await self.store_conversation(transcript, response)
-            
-            # Trigger TTS processing via Redis state
-            tts_success = await self.trigger_tts_processing(response)
-            if tts_success:
-                print("[LLM] ✅ TTS processing triggered successfully")
-            else:
-                print("[LLM] ❌ Failed to trigger TTS processing")
 
+            # Routing the transcription for tools triggering if any
+            route_info = await self.route_request(transcript)
+
+            if route_info["type"] == "conversation":
+                # Handle as conversation (existing logic)
+                response = await self.process_conversation(transcript)
+            else:
+                # Handle as tool request (new logic)
+                response = await self.handle_tool_request(transcript, route_info)
+        
             # Clear thinking state 
             await state.set("ai_thinking", "False", source="llm", priority=10)
-
+        
             print("[LLM] ✅ Processing complete!")
             return response
         
         except Exception as e:
             print(f"[LLM] ❌ Error in LLM processing: {e}")
             traceback.print_exc()
-            
-            # Ensure thinking state is cleared on error
             await state.set("ai_thinking", "False", source="llm", priority=10)
             raise
+
+    async def process_conversation(self, transcript):
+        """Handle conversational requests (extracted from original process_transcript)"""
+        # Build context from memory systems
+        context = await self.build_context(transcript)
+        print(f"[LLM] Built context with {len(context['relevant_memories'])} semantic memories")
+
+        # Generate response
+        response = await self.generate_response(transcript, context)
+        print(f"[LLM] Generated response: '{response[:100]}...'")
+
+        # Update memory systems
+        await self.store_conversation(transcript, response)
+
+        # Trigger TTS processing via Redis state
+        tts_success = await self.trigger_tts_processing(response)
+        if tts_success:
+            print("[LLM] ✅ TTS processing triggered successfully")
+        else:
+            print("[LLM] ❌ Failed to trigger TTS processing")
+
+        return response
     
+    async def handle_tool_request(self, transcript, route_info):
+        """Handle tool requests with class-based tool execution"""
+        tool_type = route_info.get("tool_type", "unknown")
+
+        print(f"[LLM] 🔧 Handling tool request: {tool_type}")
+
+        try:
+            # Import and initialize tool manager
+            tool_manager = ToolManager()
+
+            # Execute the tool to get structured data
+            print(f"[LLM] 🔧 Executing {tool_type} tool...")
+            tool_result = await tool_manager.execute_tool(tool_type, transcript)
+
+            if tool_result.get("success", False):
+                # Build context with tool data for Samantha
+                print(f"[LLM] 📊 Tool succeeded, building context with data...")
+                tool_context = await self.build_context_with_tool_data(transcript, tool_result)
+
+                # Generate Samantha's response incorporating tool data
+                response = await self.generate_response(transcript, tool_context)
+            else:
+                # Tool failed - provide Samantha with failure context
+                print(f"[LLM] ❌ Tool failed: {tool_result.get('error', 'Unknown error')}")
+
+                # Build context with failure information
+                failure_context = await self.build_context_with_tool_failure(transcript, tool_type, tool_result)
+
+                response = await self.generate_response(transcript, failure_context)
+
+        except Exception as e:
+            print(f"[LLM] ❌ Error in tool execution: {e}")
+
+            # Build context with exception failure info
+            exception_context = await self.build_context_with_tool_failure(
+                transcript, 
+                tool_type, 
+                {"error": f"Technical error: {str(e)}", "success": False}
+            )
+
+            response = await self.generate_response(transcript, exception_context)
+
+        # Store in memory (so Samantha remembers tool interactions)
+        await self.store_conversation(transcript, response)
+
+        # Trigger TTS processing
+        tts_success = await self.trigger_tts_processing(response)
+        if tts_success:
+            print("[LLM] ✅ TTS processing triggered successfully")
+        else:
+            print("[LLM] ❌ Failed to trigger TTS processing")
+
+        return response
+    
+    async def build_context_with_tool_data(self, transcript, tool_result):
+        """Build context including successful tool data for Samantha to process"""
+        # Get regular context first
+        base_context = await self.build_context(transcript)
+
+        # Add tool-specific context
+        tool_context = {
+            **base_context,
+            "tool_data": tool_result["data"],
+            "tool_type": tool_result.get("tool_type"),
+            "tool_context": f"User requested {tool_result.get('tool_type')} information. Use this data to respond naturally."
+        }
+
+        return tool_context
+    
+    async def build_context_with_tool_failure(self, transcript, tool_type, tool_result):
+        """Build context including tool failure info for Samantha to respond gracefully"""
+        # Get regular context first
+        base_context = await self.build_context(transcript)
+
+        # Add failure context
+        failure_context = {
+            **base_context,
+            "tool_failure": {
+                "requested_tool": tool_type,
+                "user_intent": transcript,
+                "error_reason": tool_result.get('error', 'Service temporarily unavailable'),
+                "guidance": f"User wanted {tool_type} information but the service is unavailable. Acknowledge this and offer alternatives or ask how else you can help."
+            }
+        }
+
+        return failure_context
+
     async def build_context(self, current_transcript):
         """Build context from multiple memory sources"""
         print("[LLM] 🧠 Building context from memory systems...")
@@ -233,10 +470,20 @@ class LLMComponent:
         base_prompt = CHARACTER_CARD_PROMPT
         
         # Add relevant memories to prompt
-        if context["relevant_memories"]:
+        if context.get("relevant_memories"):
             memory_text = " Based on what I know about you: "
             memory_text += ", ".join([mem["content"] for mem in context["relevant_memories"]])
             base_prompt += memory_text
+        
+        # Add tool data to prompt (THIS WAS MISSING!)
+        if context.get("tool_data"):
+            tool_type = context.get("tool_type", "unknown")
+            tool_data = context["tool_data"]
+            
+            if tool_type == "weather":
+                base_prompt += f"\n\nCURRENT WEATHER DATA: {tool_data['summary']} (Temperature: {tool_data['temperature']}°C, Humidity: {tool_data['humidity']}%, Wind: {tool_data['wind_speed']} km/h {tool_data['wind_direction']}, Conditions: {tool_data['description']}). Use this weather information to respond naturally to the user's request."
+            else:
+                base_prompt += f"\n\nTOOL DATA ({tool_type}): {tool_data}. Use this information to respond to the user's request."
         
         return base_prompt
     
