@@ -81,6 +81,7 @@
       "creator": "",
       "likes": "",
       "hobbies": "",
+      "mangas_artists": "",
       "mangas": "",
       "gaming": ""
     },
@@ -137,6 +138,10 @@
           "tavily_api_key": "",
           "default_movie": "Best movies of the year",
           "max_results": 3
+        },
+
+        "finance": {
+          "default_search": "EUROPE"
         }
       }
     }

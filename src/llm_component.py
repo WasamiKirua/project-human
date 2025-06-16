@@ -345,7 +345,7 @@ class LLMComponent:
         """Get relevant memories from Weaviate semantic search"""
         try:
             # Use real memory component instead of fake data
-            memories = await self.memory_component.get_semantic_memories(query, limit=3)
+            memories = await self.memory_component.get_semantic_memories(query, limit=5)
 
             # Convert to the expected format for backward compatibility
             formatted_memories = []
@@ -439,6 +439,16 @@ class LLMComponent:
         # Build system prompt with context
         system_prompt = self.build_system_prompt(context)
         
+        # DEBUG: Print the actual system prompt being sent to LLM
+        print(f"[LLM] 🔍 LOCAL SYSTEM PROMPT DEBUG:")
+        print(f"[LLM] 📝 Length: {len(system_prompt)} characters")
+        if context.get("relevant_memories"):
+            print(f"[LLM] 🧠 Memory section:")
+            for i, mem in enumerate(context["relevant_memories"]):
+                print(f"[LLM] 📝 Memory {i+1}: Type={mem.get('type')}, Content='{mem['content'][:100]}...'")
+        print(f"[LLM] 📝 System prompt preview (last 500 chars):")
+        print(f"[LLM] 📝 {system_prompt[-500:]}")
+        
         # Build conversation messages with context
         messages = [
             {"role": "system", "content": system_prompt}
@@ -469,11 +479,45 @@ class LLMComponent:
         """Build system prompt with context information"""
         base_prompt = CHARACTER_CARD_PROMPT
         
-        # Add relevant memories to prompt
+        # Add relevant memories to prompt with proper context
         if context.get("relevant_memories"):
-            memory_text = " Based on what I know about you: "
-            memory_text += ", ".join([mem["content"] for mem in context["relevant_memories"]])
-            base_prompt += memory_text
+            user_memories = []
+            creator_memories = []
+            general_memories = []
+            
+            # Categorize memories by type
+            for mem in context["relevant_memories"]:
+                memory_type = mem.get("type", "general")
+                if memory_type.startswith("user_"):
+                    user_memories.append(mem["content"])
+                elif memory_type.startswith("creator_"):
+                    creator_memories.append(mem["content"])
+                else:
+                    general_memories.append(mem["content"])
+            
+            # Add critical instructions to prevent memory/character confusion
+            base_prompt += "\n\nCRITICAL MEMORY INSTRUCTIONS:"
+            base_prompt += "\n- NEVER confuse memory information with your character background"
+            base_prompt += "\n- NEVER claim to have met or have personal relationships with people from memories"
+            base_prompt += "\n- NEVER mix creator information with your fictional backstory"
+            base_prompt += "\n- Keep your character consistent but separate from memory data"
+            
+            # Add user memories with proper context
+            if user_memories:
+                memory_text = f"\n\nWhat I know about the user (the person I'm talking to): {', '.join(user_memories)}"
+                memory_text += "\n\nIMPORTANT: These are facts about the USER, not about my creator or anyone else."
+                base_prompt += memory_text
+            
+            # Add creator memories with proper context  
+            if creator_memories:
+                memory_text = f"\n\nAbout my creator (who built me): {', '.join(creator_memories)}"
+                memory_text += "\n\nIMPORTANT: This is information about my creator/developer. I should NOT claim to have met them or have personal relationships with them. I am an AI assistant created by them."
+                base_prompt += memory_text
+                
+            # Add general memories
+            if general_memories:
+                memory_text = f"\n\nGeneral context: {', '.join(general_memories)}"
+                base_prompt += memory_text
         
         # Add tool data to prompt (THIS WAS MISSING!)
         if context.get("tool_data"):

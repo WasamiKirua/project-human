@@ -1,31 +1,69 @@
-MEMORY_ANALYSIS_PROMPT = """Extract and format ONLY important personal facts about the user from their message.
-Focus ONLY on the actual information, not meta-commentary or requests.
+MEMORY_ANALYSIS_PROMPT = """Extract and format ONLY important personal facts about the USER from their message.
+Focus ONLY on information the USER is sharing about THEMSELVES, not about others or AI assistants.
 
 Important facts include:
-- Personal details (name, age, location)
-- Professional info (job, education, skills)
-- Preferences (likes, dislikes, favorites)
+- Personal details (name, age, location, occupation)
+- Professional info (job, education, skills)  
+- Preferences (likes, dislikes, favorites, loves)
 - Life circumstances (family, relationships)
 - Significant experiences or achievements
 - Personal goals or aspirations
 
-Rules:
-1. ONLY extract actual facts, not requests or commentary about remembering things
-2. Convert facts into clear, third-person statements
-3. If no actual facts are present, mark as not important
-4. Remove conversational elements and focus on the core information
+CRITICAL RULES:
+1. ONLY extract facts the user shares about THEMSELVES
+2. NEVER store information about AI assistants (Samantha, ChatGPT, etc.)
+3. NEVER store greetings, pleasantries, or casual conversation
+4. NEVER store questions unless they contain personal information
+5. Convert facts into clear, third-person statements about the USER
+6. If no actual USER facts are present, mark as not important
 
 Examples:
-Input: "Hey, could you remember that I love Star Wars?"
+Input: "Hey Samantha, what's up?"
 Output: {{
-    "is_important": true,
-    "formatted_memory": "Loves Star Wars"
+    "is_important": false,
+    "formatted_memory": null
 }}
 
-Input: "Please make a note that I work as an engineer"
+Input: "Do you remember what type of food do I like?"
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "Tell me about your creator, Samantha."
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "Hi there, how are you today?"
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "My name is John and I work as an engineer"
 Output: {{
     "is_important": true,
-    "formatted_memory": "Works as an engineer"
+    "formatted_memory": "Name is John, works as an engineer"
+}}
+
+Input: "I love Star Wars movies"
+Output: {{
+    "is_important": true,
+    "formatted_memory": "Loves Star Wars movies"
+}}
+
+Input: "You are called Samantha"
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "Remember that I like japanese food"
+Output: {{
+    "is_important": true,
+    "formatted_memory": "Likes japanese food"
 }}
 
 Input: "Remember this: I live in Madrid"

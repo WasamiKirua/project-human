@@ -10,8 +10,8 @@ class WeatherTool:
         """Initialize weather tool with config"""
         self.config = self._load_config()
         self.api_keys = self._load_api_keys()
-        self.api_key = self.config.get("api_key")
         self.base_url = self.config.get("base_url", "https://api.weatherstack.com")
+        self.api_key = self.api_keys.get("tavily_api_key")
         self.groq_key = self.api_keys.get("groq_api_key")
         
     def _load_config(self) -> Dict[str, Any]:

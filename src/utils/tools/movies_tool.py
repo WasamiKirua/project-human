@@ -10,7 +10,7 @@ class MoviesTool:
         """Initialize movies tool with config"""
         self.config = self._load_config()
         self.api_keys = self._load_api_keys()
-        self.api_key = self.config.get("tavily_api_key")
+        self.api_key = self.api_keys.get("tavily_api_key")
         self.groq_key = self.api_keys.get("groq_api_key")
         
         # Initialize Tavily client if API key exists

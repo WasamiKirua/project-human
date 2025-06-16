@@ -331,6 +331,13 @@ class MemoryComponent:
     async def eval_short_mem_groq(self, query):
         print(f"[Memory] 🚀 Starting Groq evaluation for query: '{query}'")
         
+        # QUICK FIX: Block obvious questions from being stored as memories
+        query_lower = query.lower().strip()
+        question_indicators = ["do you remember", "can you remember", "what is", "what's", "how are", "tell me about", "?"]
+        if any(indicator in query_lower for indicator in question_indicators):
+            print(f"[Memory] 🚫 BLOCKING question from memory storage: '{query}'")
+            return None
+        
         if not self.groq_key:
             print("[Memory] ❌ No Groq API key available!")
             return "Error: No Groq API key configured"
@@ -349,16 +356,21 @@ class MemoryComponent:
                 )
 
                 result = response.choices[0].message.content
+                print(f"[Memory] 🔍 GROQ ANALYSIS DEBUG:")
+                print(f"[Memory] 📤 Input: '{query}'")
+                print(f"[Memory] 📥 Groq response: '{result}'")
+                
                 # Direct extraction of formatted_memory when is_important is true
                 if '"is_important": true' in result:
                     memory_match = re.search(r'"formatted_memory":\s*"([^"]+)"', result)
                     if memory_match:
                         formatted_memory = memory_match.group(1)
-                        print(f"[Memory] Extracted memory: {formatted_memory}")
+                        print(f"[Memory] ❌ BUG: Extracted memory from question: '{formatted_memory}'")
                     else:
                         formatted_memory = None
                 else:
                     formatted_memory = None
+                    print(f"[Memory] ✅ Correctly identified as not important")
                 
                 print(f"[Memory] 🔒 Groq client automatically closed")
                 return formatted_memory
@@ -454,15 +466,29 @@ class MemoryComponent:
             return False
 
     def classify_memory_type(self, content: str) -> str:
-        """Classify memory type based on content"""
+        """Classify memory type based on content - generic classification without personal identifiers"""
         content_lower = content.lower()
         
-        if any(word in content_lower for word in ["likes", "loves", "prefers", "favorite", "hates", "enjoys"]):
-            return "preference"
+        # Check if this is creator/developer information (generic patterns)
+        creator_indicators = ["creator", "developer", "made me", "built me", "my maker"]
+        if any(indicator in content_lower for indicator in creator_indicators):
+            if any(word in content_lower for word in ["likes", "loves", "prefers", "favorite", "enjoys"]):
+                return "creator_preference"
+            else:
+                return "creator_info"
+        
+        # Check for general creator-related content by looking for possessive references to non-user
+        # This catches phrases like "John likes..." where John isn't the current user
+        if any(pattern in content_lower for pattern in ["'s name is", " is a ", " years old", " old man", " old woman", " man who", " woman who"]):
+            return "creator_fact"
+            
+        # User memory classification (about the person talking to the AI)
+        elif any(word in content_lower for word in ["likes", "loved", "loves", "prefers", "preferred", "favorite", "favourite", "hates", "enjoys", "enjoyed"]):
+            return "user_preference"
         elif any(word in content_lower for word in ["lives", "from", "age", "name", "job", "works", "years old"]):
-            return "fact"
+            return "user_fact"
         elif any(word in content_lower for word in ["did", "went", "happened", "experienced", "visited"]):
-            return "experience"
+            return "user_experience"
         else:
             return "general"
 
@@ -476,7 +502,7 @@ class MemoryComponent:
         return available
 
     async def get_semantic_memories(self, query: str, limit: int = 5) -> List[Dict]:
-        """Retrieve relevant memories from Weaviate using your existing search pattern"""
+        """Retrieve relevant memories from Weaviate with smart context filtering"""
         if not self.is_weaviate_available():
             print("[Memory] ❌ Weaviate collection not available for semantic search")
             return []
@@ -484,12 +510,55 @@ class MemoryComponent:
         try:
             print(f"[Memory] 🔍 Searching semantic memories for: '{query[:50]}...'")
             
-            # Use your existing search pattern - sync call in async function
-            response = self.weaviate_collection.query.near_text(
-                query=query,
-                limit=limit,
-                return_properties=["content", "memoryType", "timestamp", "importanceScore", "position"]  # Fixed: camelCase
-            )
+            # Improve search query for better semantic matching
+            search_query = query
+            
+            # Enhanced query preprocessing for specific topics
+            query_lower = query.lower()
+            if "manga artist" in query_lower:
+                search_query = "favorite manga artists preferences"
+                print(f"[Memory] 🎯 Enhanced search query: '{search_query}'")
+            elif "manga" in query_lower and ("favorite" in query_lower or "like" in query_lower):
+                search_query = "favorite manga preferences"
+                print(f"[Memory] 🎯 Enhanced search query: '{search_query}'")
+            
+            # Import Filter class
+            from weaviate.classes.query import Filter
+            
+            # Determine query context to filter appropriate memories
+            query_lower = query.lower()
+            
+            # If asking about creator/developer specifically (generic patterns)
+            creator_keywords = ["creator", "developer", "made you", "built you", "your maker", "tell me about your creator", "about your creator"]
+            if any(keyword in query_lower for keyword in creator_keywords):
+                print("[Memory] 🎯 Filtering for creator information")
+                response = self.weaviate_collection.query.near_text(
+                    query=search_query,
+                    limit=limit,
+                    filters=Filter.by_property("memoryType").like("creator*"),
+                    return_properties=["content", "memoryType", "timestamp", "importanceScore", "position"]
+                )
+                           
+            # If asking about user specifically - IMPROVED DETECTION
+            elif any(phrase in query_lower for phrase in [
+                "do you remember", "what do i", "my preference", "about me", 
+                "what type of food do i", "what do i like", "my favorite",
+                "remember what i", "what i told you", "i like", "i love"
+            ]):
+                print("[Memory] 🎯 Filtering for user information")
+                response = self.weaviate_collection.query.near_text(
+                    query=search_query,
+                    limit=limit,
+                    filters=Filter.by_property("memoryType").like("user*"),
+                    return_properties=["content", "memoryType", "timestamp", "importanceScore", "position"]
+                )
+            else:
+                # No filtering - search all memories
+                response = self.weaviate_collection.query.near_text(
+                    query=search_query,
+                    limit=limit,
+                    return_properties=["content", "memoryType", "timestamp", "importanceScore", "position"]
+                )
             
             if not response.objects:
                 print("[Memory] 💭 No semantic memories found")
@@ -499,19 +568,49 @@ class MemoryComponent:
             for obj in response.objects:
                 memory = {
                     "content": obj.properties.get("content", ""),
-                    "memory_type": obj.properties.get("memoryType", "unknown"),  # Fixed: map from camelCase
+                    "memory_type": obj.properties.get("memoryType", "unknown"),
                     "timestamp": obj.properties.get("timestamp", ""),
-                    "importance_score": obj.properties.get("importanceScore", 0),  # Fixed: map from camelCase
+                    "importance_score": obj.properties.get("importanceScore", 0),
                     "position": obj.properties.get("position", 0)
                 }
                 memories.append(memory)
                 
             print(f"[Memory] ✅ Found {len(memories)} relevant semantic memories")
+            for memory in memories:
+                print(f"[Memory] 📝 Memory type: {memory['memory_type']}, Content: {memory['content'][:50]}...")
             return memories
             
         except Exception as e:
             print(f"[Memory] ❌ Error in semantic search: {e}")
-            return []
+            print(f"[Memory] 🔄 Falling back to unfiltered search...")
+            
+            # Fallback: Try simple search without filtering
+            try:
+                response = self.weaviate_collection.query.near_text(
+                    query=query,
+                    limit=limit,
+                    return_properties=["content", "memoryType", "timestamp", "importanceScore", "position"]
+                )
+                
+                memories = []
+                for obj in response.objects:
+                    memory = {
+                        "content": obj.properties.get("content", ""),
+                        "memory_type": obj.properties.get("memoryType", "unknown"),
+                        "timestamp": obj.properties.get("timestamp", ""),
+                        "importance_score": obj.properties.get("importanceScore", 0),
+                        "position": obj.properties.get("position", 0)
+                    }
+                    memories.append(memory)
+                    
+                print(f"[Memory] ✅ Fallback search found {len(memories)} memories")
+                for memory in memories:
+                    print(f"[Memory] 📝 Fallback - type: {memory['memory_type']}, Content: {memory['content'][:50]}...")
+                return memories
+                
+            except Exception as fallback_error:
+                print(f"[Memory] ❌ Fallback search also failed: {fallback_error}")
+                return []
 
     def close_weaviate(self):
         """Close Weaviate connection"""
