@@ -21,6 +21,7 @@ dependencies = [
     "silero-vad>=5.1.2",
     "sounddevice>=0.5.2",
     "sqlite-vec>=0.1.6",
+    "tavily-python>=0.7.6",
     "vastai>=0.3.1",
     "weaviate-client>=4.14.4",
 ]

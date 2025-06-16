@@ -482,6 +482,8 @@ class LLMComponent:
             
             if tool_type == "weather":
                 base_prompt += f"\n\nCURRENT WEATHER DATA: {tool_data['summary']} (Temperature: {tool_data['temperature']}°C, Humidity: {tool_data['humidity']}%, Wind: {tool_data['wind_speed']} km/h {tool_data['wind_direction']}, Conditions: {tool_data['description']}). Use this weather information to respond naturally to the user's request."
+            elif tool_type == "news":
+                base_prompt += f"\n\nLATEST NEWS: {tool_data['summary']} Use this news information to respond naturally to the user's request."
             else:
                 base_prompt += f"\n\nTOOL DATA ({tool_type}): {tool_data}. Use this information to respond to the user's request."
         

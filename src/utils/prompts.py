@@ -161,6 +161,26 @@ Examples:
 
 Location:"""
 
+
+NEWS_TOOL = """Extract the type of news the user wants. Return ONLY the info in format "News, Type of News" or just "Latest World News" if not specified.
+
+User request: "{replacement}"
+Rules:
+- If you find the world news and type of news, return "News, Type"
+- If you find only the world news, return just "Latest World News"  
+- If no news type is mentioned, return "UNKNOWN"
+- if you find that user wants to know what happened or is happening in a specific country or about a specific topic, return "Latest News country/topic"
+- Be precise and don't add extra words
+Examples:
+- "What's are the latest World news?" → "Latest World News"
+- "Tell me please the lastest news in Germany" → "Latest news Germany"
+- "What's the latest news in Tech?" → "Latest news in Tech"
+- "Find latest news in AI?" → "Latest AI news"
+- "I read that something happened in Japan" → "Latest News Japan"
+- "Do you know what happened in Ukraine?" → "Latest News Ukraine"
+
+Response:"""
+
 # ROUTER_PROMPT = """
 # You are a conversational assistant that needs to decide the type of response to give to
 # the user. You'll take into account the conversation so far and determine if the best next response is

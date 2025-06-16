@@ -3,7 +3,7 @@ import os
 import aiohttp
 from typing import Dict, Any, Optional
 from groq import AsyncGroq
-from prompts import WEATHER_TOOL
+from ..prompts import WEATHER_TOOL
 
 class WeatherTool:
     def __init__(self):

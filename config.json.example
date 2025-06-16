@@ -125,6 +125,12 @@
           "api_key": "",
           "base_url": "https://api.weatherstack.com/",
           "default_location": "Tokyo, Japan"
+        },
+
+        "news": {
+          "tavily_api_key": "",
+          "default_news": "Latest world news",
+          "max_results": 3
         }
       }
     }
