@@ -1,11 +1,13 @@
 from .weather_tool import WeatherTool
 from .news_tool import NewsTool
+from .movies_tool import MoviesTool
 
 class ToolManager:
     def __init__(self):
         self.tools = {
             "news": NewsTool(),
-            "weather": WeatherTool()
+            "weather": WeatherTool(),
+            "movies": MoviesTool()
             #"spotify": SpotifyTool(), 
             #"search": SearchTool(),
         }

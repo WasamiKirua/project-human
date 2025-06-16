@@ -134,11 +134,16 @@ Available options:
 
 Examples:
 - "How are you?" → CONVERSATION
-- "Tell me about yourself" → CONVERSATION  
+- "Tell me about yourself" → CONVERSATION
+- "What's the weather?" → TOOL (weather)
 - "What's the latest news?" → TOOL (news)
+- "What's going on in the world?" → TOOL (news)
+- "Do you know what's going on in Germany?" → TOOL (news)
+- "Suggest me some nice movie" → TOOL (movies)
+- "I am looking for a movie to watch" → TOOL (movies)
+- "I need some info on this movie" → TOOL (movies)
 - "Play some music" → TOOL (spotify)
 - "Search for restaurants" → TOOL (search)
-- "What's the weather?" → TOOL (weather)
 
 Respond by calling the appropriate function."""
 
@@ -178,6 +183,29 @@ Examples:
 - "Find latest news in AI?" → "Latest AI news"
 - "I read that something happened in Japan" → "Latest News Japan"
 - "Do you know what happened in Ukraine?" → "Latest News Ukraine"
+
+Response:"""
+
+MOVIES_TOOL = """Extract the type of movie recommendation the user wants. Return ONLY the search query in a clean format.
+
+User request: "{replacement}"
+Rules:
+- If user mentions specific genre, return "movies [genre]" 
+- If user mentions specific actor, return "movies with [actor name]"
+- If user mentions year/decade, return "movies from [year/decade]"
+- If user wants movie reviews, return "movie reviews [movie name]"
+- If user wants general recommendations, return "best movies recommendations"
+- If user mentions mood/theme, return "movies [mood/theme]"
+- Be precise and don't add extra words
+Examples:
+- "Recommend some good movies" → "best movies recommendations"
+- "I want to watch a horror movie" → "movies horror"
+- "What are good movies with Tom Hanks?" → "movies with Tom Hanks"
+- "Any good sci-fi films?" → "movies sci-fi"
+- "Movies from the 90s" → "movies from 1990s"
+- "Romantic comedies please" → "movies romantic comedy"
+- "I'm feeling sad, need some uplifting movie" → "movies uplifting happy"
+- "What's a good movie to watch tonight?" → "best movies recommendations"
 
 Response:"""
 

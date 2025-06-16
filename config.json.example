@@ -131,6 +131,12 @@
           "tavily_api_key": "",
           "default_news": "Latest world news",
           "max_results": 3
+        },
+
+        "movies": {
+          "tavily_api_key": "",
+          "default_movie": "Best movies of the year",
+          "max_results": 3
         }
       }
     }
