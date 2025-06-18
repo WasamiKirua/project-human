@@ -68,7 +68,8 @@
       "openai_api_key": "",
       "groq_api_key": "",
       "open_router": "",
-      "replicate_api_key": ""
+      "replicate_api_key": "",
+      "tavily_api_key": ""
     },
 
     "memory": {
@@ -141,7 +142,8 @@
         },
 
         "finance": {
-          "default_search": "EUROPE"
+          "default_finance": "Latest price of Bitcoin",
+          "max_results": 2
         }
       }
     }

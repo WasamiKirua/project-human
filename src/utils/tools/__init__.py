@@ -1,13 +1,15 @@
 from .weather_tool import WeatherTool
 from .news_tool import NewsTool
 from .movies_tool import MoviesTool
+from .finance_tool import FinanceTool
 
 class ToolManager:
     def __init__(self):
         self.tools = {
             "news": NewsTool(),
             "weather": WeatherTool(),
-            "movies": MoviesTool()
+            "movies": MoviesTool(),
+            "finance": FinanceTool()
             #"spotify": SpotifyTool(), 
             #"search": SearchTool(),
         }
@@ -16,4 +18,8 @@ class ToolManager:
         if tool_type in self.tools:
             return await self.tools[tool_type].execute(transcript, context)
         else:
-            return f"Unknown tool: {tool_type}"
+            return {
+                "success": False,
+                "tool_type": tool_type,
+                "error": f"Unknown tool: {tool_type}"
+            }

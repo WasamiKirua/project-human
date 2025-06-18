@@ -23,5 +23,4 @@ dependencies = [
     "sqlite-vec>=0.1.6",
     "tavily-python>=0.7.6",
     "weaviate-client>=4.14.4",
-    "yfinance==0.2.63",
 ]

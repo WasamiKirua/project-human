@@ -180,11 +180,21 @@ Examples:
 - "Suggest me some nice movie" → TOOL (movies)
 - "I am looking for a movie to watch" → TOOL (movies)
 - "I need some info on this movie" → TOOL (movies)
+- "Price of Amazon stock?" → TOOL (finance)
+- "Price of MSFT" → TOOL (finance)
+- "Price of Amazon stock yesterday?" → TOOL (finance)
+- "Price of Amazon, Google and Apple?" → TOOL (finance)
+- "What's the price of Bitcoin?" → TOOL (finance)
+- "Bitcoin price today" → TOOL (finance)
+- "How much is Bitcoin worth?" → TOOL (finance)
+- "Current price of BTC" → TOOL (finance)
+- "Ethereum price" → TOOL (finance)
+- "European market status" → TOOL (finance)
+- "Stock market today" → TOOL (finance)
 - "Play some music" → TOOL (spotify)
 - "Search for restaurants" → TOOL (search)
 
 Respond by calling the appropriate function."""
-
 
 WEATHER_TOOL = """Extract the city and country from this weather request. Return ONLY the location in format "City, Country" or just "City" if country is not specified.
 
@@ -203,7 +213,6 @@ Examples:
 - "How's the weather in my hometown Berlin?" → "Berlin"
 
 Location:"""
-
 
 NEWS_TOOL = """Extract the type of news the user wants. Return ONLY the info in format "News, Type of News" or just "Latest World News" if not specified.
 
@@ -244,6 +253,48 @@ Examples:
 - "Romantic comedies please" → "movies romantic comedy"
 - "I'm feeling sad, need some uplifting movie" → "movies uplifting happy"
 - "What's a good movie to watch tonight?" → "best movies recommendations"
+
+Response:"""
+
+FINANCE_TOOL = """Extract the financial information the user wants. Return ONLY the search query in a clean, natural format.
+
+User request: "{replacement}"
+
+Rules:
+- For stock prices: return "current price of [company/ticker]"
+- For market status: return "[market] stock market status today" 
+- For crypto: return "[cryptocurrency] price today"
+- For commodities: return "[commodity] price today"
+- For forex: return "[currency pair] exchange rate"
+- For market indices: return "[index] current value"
+- For earnings/financial news: return "[company] latest earnings news"
+- For economic indicators: return "[indicator] latest data"
+- Include time context when mentioned (today, yesterday, this week)
+- If no specific request, return "UNKNOWN"
+- Be precise and natural
+
+Examples:
+- "What's Google's stock price?" → "current price of Google"
+- "How's Apple doing today?" → "current price of Apple"
+- "AAPL price" → "current price of AAPL"
+- "Tesla stock" → "current price of Tesla"
+- "What's the S&P 500 at?" → "S&P 500 current value"
+- "How's the European market?" → "European stock market status today"
+- "Nasdaq performance today" → "Nasdaq performance today"
+- "Bitcoin price" → "Bitcoin price today"
+- "BTC current value" → "Bitcoin price today"
+- "Ethereum vs Bitcoin" → "Ethereum vs Bitcoin price comparison"
+- "Gold price today" → "gold price today"
+- "EUR USD exchange rate" → "EUR USD exchange rate"
+- "Dollar vs Euro" → "USD EUR exchange rate"
+- "Amazon earnings" → "Amazon latest earnings news"
+- "How did markets perform yesterday?" → "stock market performance yesterday"
+- "Crypto market status" → "cryptocurrency market status today"
+- "Oil prices" → "crude oil price today"
+- "What happened to GameStop?" → "GameStop stock news today"
+- "Microsoft financial results" → "Microsoft latest earnings news"
+- "Interest rates today" → "current interest rates"
+- "Economic indicators this week" → "latest economic indicators this week"
 
 Response:"""
 
