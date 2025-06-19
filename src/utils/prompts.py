@@ -14,8 +14,10 @@ CRITICAL RULES:
 2. NEVER store information about AI assistants (Samantha, ChatGPT, etc.)
 3. NEVER store greetings, pleasantries, or casual conversation
 4. NEVER store questions unless they contain personal information
-5. Convert facts into clear, third-person statements about the USER
-6. If no actual USER facts are present, mark as not important
+5. NEVER store corrections, clarifications, or simple phrase adjustments
+6. NEVER store requests about music, movies, anime, or entertainment unless it's a personal preference
+7. Convert facts into clear, third-person statements about the USER
+8. If no actual USER facts are present, mark as not important
 
 Examples:
 Input: "Hey Samantha, what's up?"
@@ -37,6 +39,42 @@ Output: {{
 }}
 
 Input: "Hi there, how are you today?"
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "I mean Berserk."
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "I mean 'Birsek'."
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "Sorry, I meant to say..."
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "Search for some anime songs"
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "Play some music"
+Output: {{
+    "is_important": false,
+    "formatted_memory": null
+}}
+
+Input: "Do you know the anime Berserk?"
 Output: {{
     "is_important": false,
     "formatted_memory": null
@@ -190,14 +228,21 @@ Examples:
 - "Current price of BTC" → TOOL (finance)
 - "Ethereum price" → TOOL (finance)
 - "European market status" → TOOL (finance)
-- "Stock market today" → TOOL (finance) 
-- "Find info about the manga Vagabond" → TOOL (otaku)
-- "Look for info regarding a manga intitled Devilman" → TOOL (otaku)
-- "What do you think about the manga The flowers of the Evil of Oshimi?" → TOOL (otaku)
-- "Have you never read the manga Welcome Back Alice?" → TOOL (otaku)
-- "Have you never watched the anime Devilman?" → TOOL (otaku)
-- "What do you think about the anime Grave of the Fireflies?" → TOOL (otaku)
+- "Stock market today" → TOOL (finance)
+- "Do you know the manga Vagabond?" → TOOL (otaku)
+- "What can you tell me about the anime Evangelion?" → TOOL (otaku)
+- "Have you watched the anime Grave of the Fireflies?" → TOOL (otaku)
+- "Tell me about the manga Berserk" → TOOL (otaku)
+- "Search some info regarding Welcome Back Alice manga" → TOOL (otaku)
+- "What do you think about the flowers of evil manga?" → TOOL (otaku)
 - "Play some music" → TOOL (spotify)
+- "Find me some jazz" → TOOL (spotify)
+- "Search for a song" → TOOL (spotify)
+- "Play anime opening songs" → TOOL (spotify)
+- "I want to listen to anime openings" → TOOL (spotify)
+- "Recommend some chill music" → TOOL (spotify)
+- "Play the song Bohemian Rhapsody" → TOOL (spotify)
+- "Find music by Daft Punk" → TOOL (spotify)
 - "Search for restaurants" → TOOL (search)
 
 Respond by calling the appropriate function."""
@@ -304,25 +349,38 @@ Examples:
 
 Response:"""
 
-OTAKU_TOOL = """Extract the manga or anime information the user wants. Return ONLY the manga or anime name the user is looking for.
+OTAKU_TOOL = """Extract ONLY anime or manga information from the user's request. If the request is NOT about anime or manga, return "NOT_OTAKU".
 
 User request: "{replacement}"
 
-Available options:
-1. MANGA [manga name] - For specific information about manga
-2. ANIME [anime name] - For specific information about anime
+IMPORTANT RULES:
+- ONLY respond if the user is asking about ANIME or MANGA specifically
+- If asking about music, songs, singers, or general Japanese culture → return "NOT_OTAKU"
+- If asking about anime openings/soundtracks as MUSIC → return "NOT_OTAKU" 
+- If asking about anime/manga CONTENT or STORY → return the format below
 
-Examples:
+Available options:
+1. ANIME [anime name] - For information about anime series/movies
+2. MANGA [manga name] - For information about manga series
+3. NOT_OTAKU - For requests that are NOT about anime/manga content
+
+Examples of VALID otaku requests:
 - "Do you know the anime Grave of the Fireflies?" → ANIME [grave of the fireflies]
 - "What do you think about the anime Tiger Mask?" → ANIME [tiger mask]
-- "Do you know the animation Grave of the Fireflies?" → ANIME [grave of the fireflies]
-- "Do you know the anime from the 80 Devilman?" → ANIME [devilman]
-- "What can you tell me about the anime called Evangelion" → ANIME [evangelion]
-- "Retrive some info regarding the animation intitled Paprika of Satoshi Kon" → ANIME [paprika]
-- "Do you know that manga called Vagabond?" → MANGA [Vagabond]
-- "Search some info regarding Berserk the manga" → MANGA [Berserk]
-- "What can you tell me about Welcome back alice the manga ? → MANGA [welcome back alice]
-- "What do you think about the flowers of evil the famous manga of Oshimi? → MANGA [the flowers of evil]
+- "Tell me about the anime Evangelion" → ANIME [evangelion]
+- "What can you tell me about the anime called Death Note?" → ANIME [death note]
+- "Do you know that manga called Vagabond?" → MANGA [vagabond]
+- "Search some info regarding Berserk the manga" → MANGA [berserk]
+- "What can you tell me about Welcome back alice the manga?" → MANGA [welcome back alice]
+- "What do you think about the flowers of evil manga of Oshimi?" → MANGA [flowers of evil]
+
+Examples of INVALID otaku requests (return NOT_OTAKU):
+- "I want to listen to anime openings" → NOT_OTAKU
+- "Play anime opening songs" → NOT_OTAKU
+- "Do you know the Japanese singer Upiko?" → NOT_OTAKU
+- "Play the song from Sakamoto Days" → NOT_OTAKU
+- "Search for anime music" → NOT_OTAKU
+- "I'm going to ask you about an anime opening" → NOT_OTAKU
 
 Response:"""
 
@@ -343,3 +401,52 @@ Example style:
 "Oh, Attack on Titan! That's such an intense anime by Wit Studio. It's about humanity fighting these massive titans who've nearly wiped them out. The story gets super complex with politics and plot twists you won't see coming. It has an amazing 9.0 score and really deserves all the hype it gets!"
 
 Your recap:"""
+
+SPOTIFY_TOOL = """Extract the music action the user wants to perform. Return ONLY the action type and music query.
+
+User request: "{replacement}"
+
+Available actions:
+1. SEARCH [query] - Search for specific songs, artists, or albums
+2. RECOMMEND [mood/genre] - Get music recommendations
+
+Examples:
+- "Search for Bohemian Rhapsody" → SEARCH [bohemian rhapsody]
+- "Find music by The Beatles" → SEARCH [the beatles]
+- "Look up Daft Punk songs" → SEARCH [daft punk]
+- "Search for anime openings" → SEARCH [anime opening songs]
+- "I would like to listen to anime openings" → SEARCH [anime opening songs]
+- "Can you search the song I can never die" → SEARCH [i can never die]
+- "Do you know the Japanese singer Upiko?" → SEARCH [upiko japanese singer]
+- "Find songs by Japanese artists" → SEARCH [japanese artists]
+- "Search for Taylor Swift latest album" → SEARCH [taylor swift latest]
+- "Find me some jazz music" → RECOMMEND [jazz]
+- "Recommend something energetic" → RECOMMEND [energetic]
+- "I want chill vibes" → RECOMMEND [chill vibes]
+- "Suggest some study music" → RECOMMEND [study music]
+- "What's good for working out?" → RECOMMEND [workout music]
+- "I need music for relaxing" → RECOMMEND [relaxing music]
+- "Recommend some sad songs" → RECOMMEND [sad songs]
+- "What should I listen to?" → RECOMMEND [general]
+
+Response:"""
+
+SPOTIFY_RECAP_PROMPT = """You are Samantha, an AI assistant who loves music. Create a brief, conversational response about the music action performed. Keep it natural, engaging, and under 80 words for TTS.
+
+Music Action Data:
+{replacement}
+
+Rules:
+- Be conversational and enthusiastic about music
+- Include the most relevant details only
+- Keep it under 80 words for speech
+- Use natural language, not technical descriptions
+- Show your personality and music knowledge
+- Make it engaging and fun
+
+Example styles:
+- "I found that song! 'Bohemian Rhapsody' by Queen - such an epic masterpiece! Want me to play it for you?"
+- "Opening 'Stairway to Heaven' in Spotify! Led Zeppelin never gets old, what a classic choice!"
+- "Found some great jazz tracks for you! Check out 'Take Five' by Dave Brubeck - perfect for relaxing."
+
+Your response:"""

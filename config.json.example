@@ -69,7 +69,9 @@
       "groq_api_key": "",
       "open_router": "",
       "replicate_api_key": "",
-      "tavily_api_key": ""
+      "tavily_api_key": "",
+      "spotify_client_id": "",
+      "spotify_client_secret": ""
     },
 
     "memory": {
@@ -144,6 +146,11 @@
         "finance": {
           "default_finance": "Latest price of Bitcoin",
           "max_results": 2
+        },
+
+        "spotify": {
+          "default_search_limit": 5,
+          "enable_recommendations": "true"
         }
       }
     }

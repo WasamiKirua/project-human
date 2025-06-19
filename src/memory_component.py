@@ -44,6 +44,7 @@ class MemoryComponent:
         self.init_weaviate()
         self.create_db()
         self.inject_lorebook()
+        self.cleanup_contaminated_memories()
 
     def load_config(self):
         config_path = 'config.json'
@@ -331,11 +332,30 @@ class MemoryComponent:
     async def eval_short_mem_groq(self, query):
         print(f"[Memory] 🚀 Starting Groq evaluation for query: '{query}'")
         
-        # QUICK FIX: Block obvious questions from being stored as memories
+        # ENHANCED BLOCKING: Block obvious patterns that shouldn't be stored as memories
         query_lower = query.lower().strip()
+        
+        # Block questions
         question_indicators = ["do you remember", "can you remember", "what is", "what's", "how are", "tell me about", "?"]
         if any(indicator in query_lower for indicator in question_indicators):
             print(f"[Memory] 🚫 BLOCKING question from memory storage: '{query}'")
+            return None
+            
+        # Block corrections and clarifications
+        correction_indicators = ["i mean", "i meant", "sorry, i meant", "actually i meant", "correction:", "let me correct"]
+        if any(indicator in query_lower for indicator in correction_indicators):
+            print(f"[Memory] 🚫 BLOCKING correction from memory storage: '{query}'")
+            return None
+            
+        # Block music/entertainment requests (unless personal preferences)
+        entertainment_indicators = ["play some", "search for", "find music", "play music", "do you know the anime", "do you know the manga", "tell me about the anime"]
+        if any(indicator in query_lower for indicator in entertainment_indicators):
+            print(f"[Memory] 🚫 BLOCKING entertainment request from memory storage: '{query}'")
+            return None
+            
+        # Block very short inputs (likely incomplete)
+        if len(query.strip()) < 5:
+            print(f"[Memory] 🚫 BLOCKING too short input from memory storage: '{query}'")
             return None
         
         if not self.groq_key:
@@ -360,20 +380,41 @@ class MemoryComponent:
                 print(f"[Memory] 📤 Input: '{query}'")
                 print(f"[Memory] 📥 Groq response: '{result}'")
                 
-                # Direct extraction of formatted_memory when is_important is true
-                if '"is_important": true' in result:
-                    memory_match = re.search(r'"formatted_memory":\s*"([^"]+)"', result)
-                    if memory_match:
-                        formatted_memory = memory_match.group(1)
-                        print(f"[Memory] ❌ BUG: Extracted memory from question: '{formatted_memory}'")
+                # Enhanced JSON parsing to avoid content extraction bugs
+                try:
+                    # Try to parse as complete JSON first
+                    import json
+                    parsed_result = json.loads(result)
+                    
+                    if parsed_result.get("is_important") == True:
+                        formatted_memory = parsed_result.get("formatted_memory")
+                        if formatted_memory:
+                            print(f"[Memory] ✅ Extracted formatted memory: '{formatted_memory}'")
+                            return formatted_memory
+                        else:
+                            print(f"[Memory] ⚠️ Important but no formatted memory found")
+                            return None
                     else:
-                        formatted_memory = None
-                else:
-                    formatted_memory = None
-                    print(f"[Memory] ✅ Correctly identified as not important")
+                        print(f"[Memory] ✅ Correctly identified as not important")
+                        return None
+                        
+                except json.JSONDecodeError:
+                    # Fallback to regex extraction if JSON parsing fails
+                    print(f"[Memory] ⚠️ JSON parsing failed, using regex fallback")
+                    if '"is_important": true' in result:
+                        memory_match = re.search(r'"formatted_memory":\s*"([^"]+)"', result)
+                        if memory_match:
+                            formatted_memory = memory_match.group(1)
+                            print(f"[Memory] ✅ Regex extracted memory: '{formatted_memory}'")
+                            return formatted_memory
+                        else:
+                            print(f"[Memory] ❌ Could not extract memory from malformed response")
+                            return None
+                    else:
+                        print(f"[Memory] ✅ Correctly identified as not important (regex)")
+                        return None
                 
                 print(f"[Memory] 🔒 Groq client automatically closed")
-                return formatted_memory
                 
             except Exception as e:
                 print(f"[Memory] ❌ Error in Groq API call: {e}")
@@ -491,6 +532,74 @@ class MemoryComponent:
             return "user_experience"
         else:
             return "general"
+
+    def cleanup_contaminated_memories(self):
+        """Clean up obviously contaminated or invalid memories from Weaviate"""
+        if not self.is_weaviate_available():
+            print("[Memory] ❌ Weaviate not available for cleanup")
+            return
+            
+        try:
+            print("[Memory] 🧹 Starting memory cleanup...")
+            
+            # Get all memories to examine
+            all_memories = self.weaviate_collection.query.fetch_objects(
+                return_properties=["content", "memoryType", "originalUserInput", "originalAiResponse"],
+                limit=1000
+            )
+            
+            deleted_count = 0
+            contaminated_patterns = [
+                # Content contamination patterns
+                lambda content: len(content.strip()) < 3,  # Too short
+                lambda content: content.endswith('\"') or content.endswith('\\"'),  # Truncated at quote
+                lambda content: content.startswith('Means'),  # The specific bug we saw
+                lambda content: content in ["None", "null", "undefined", ""],  # Invalid content
+                
+                # User input patterns that shouldn't be memories
+                lambda user_input: user_input.lower().startswith("i mean"),
+                lambda user_input: "do you know the anime" in user_input.lower(),
+                lambda user_input: "do you know the manga" in user_input.lower(),
+                lambda user_input: "search for" in user_input.lower(),
+                lambda user_input: "play some" in user_input.lower(),
+            ]
+            
+            for memory_obj in all_memories.objects:
+                should_delete = False
+                delete_reason = ""
+                
+                content = memory_obj.properties.get("content", "")
+                user_input = memory_obj.properties.get("originalUserInput", "")
+                
+                # Check content contamination
+                for i, pattern in enumerate(contaminated_patterns[:4]):  # Content patterns
+                    if pattern(content):
+                        should_delete = True
+                        delete_reason = f"contaminated content (pattern {i+1})"
+                        break
+                
+                # Check user input patterns
+                if not should_delete and user_input:
+                    for i, pattern in enumerate(contaminated_patterns[4:], 5):  # User input patterns
+                        if pattern(user_input):
+                            should_delete = True
+                            delete_reason = f"invalid user input (pattern {i})"
+                            break
+                
+                if should_delete:
+                    try:
+                        self.weaviate_collection.data.delete_by_id(memory_obj.uuid)
+                        deleted_count += 1
+                        print(f"[Memory] 🗑️ Deleted contaminated memory: '{content[:30]}...' ({delete_reason})")
+                    except Exception as e:
+                        print(f"[Memory] ❌ Failed to delete memory {memory_obj.uuid}: {e}")
+            
+            print(f"[Memory] ✅ Cleanup complete! Deleted {deleted_count} contaminated memories")
+            
+        except Exception as e:
+            print(f"[Memory] ❌ Error during cleanup: {e}")
+            import traceback
+            traceback.print_exc()
 
     def is_weaviate_available(self) -> bool:
         """Check if Weaviate collection is available and log status"""

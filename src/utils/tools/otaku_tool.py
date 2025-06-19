@@ -59,8 +59,8 @@ class OtakuTool:
             otaku_query = await self._extract_otaku_query(transcript)
             
             # Validate groq response
-            if not otaku_query or otaku_query.upper() == "UNKNOWN":
-                return self._error_response("Could not understand anime/manga request")
+            if not otaku_query or otaku_query.upper() in ["UNKNOWN", "NOT_OTAKU", "NONE"]:
+                return self._error_response("This request is not about anime or manga content. Try asking about music with the music tool instead!")
             
             # Fetch otaku data
             otaku_data = await self._fetch_otaku_data(otaku_query)
@@ -108,16 +108,16 @@ class OtakuTool:
                 print(f"[OtakuTool] ⛩️🌸🍥☯🍜 LLM extracted: '{otaku_query}'")
 
                 # Handle unknown/empty responses
-                if otaku_query.upper() == "UNKNOWN" or not otaku_query or len(otaku_query.strip()) < 2:
-                    print(f"[OtakuTool] ⛩️🌸🍥☯🍜 No specific query found")
-                    return "UNKNOWN"
+                if otaku_query.upper() in ["UNKNOWN", "NOT_OTAKU", "NONE"] or not otaku_query or len(otaku_query.strip()) < 2:
+                    print(f"[OtakuTool] ⛩️🌸🍥☯🍜 Request is not about anime/manga content")
+                    return "NOT_OTAKU"
 
                 return otaku_query
             
         except Exception as e:
             print(f"[OtakuTool] ❌ LLM extraction failed: {e}")
-            print(f"[OtakuTool] ⛩️🌸🍥☯🍜 Fallback to unknown")
-            return "UNKNOWN"
+            print(f"[OtakuTool] ⛩️🌸🍥☯🍜 Fallback to not otaku")
+            return "NOT_OTAKU"
     
     def _extract_title_from_brackets(self, query: str) -> str:
         """Extract anime/manga title from brackets like [grave of the fireflies]"""
