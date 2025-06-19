@@ -190,7 +190,13 @@ Examples:
 - "Current price of BTC" → TOOL (finance)
 - "Ethereum price" → TOOL (finance)
 - "European market status" → TOOL (finance)
-- "Stock market today" → TOOL (finance)
+- "Stock market today" → TOOL (finance) 
+- "Find info about the manga Vagabond" → TOOL (otaku)
+- "Look for info regarding a manga intitled Devilman" → TOOL (otaku)
+- "What do you think about the manga The flowers of the Evil of Oshimi?" → TOOL (otaku)
+- "Have you never read the manga Welcome Back Alice?" → TOOL (otaku)
+- "Have you never watched the anime Devilman?" → TOOL (otaku)
+- "What do you think about the anime Grave of the Fireflies?" → TOOL (otaku)
 - "Play some music" → TOOL (spotify)
 - "Search for restaurants" → TOOL (search)
 
@@ -298,59 +304,42 @@ Examples:
 
 Response:"""
 
-# ROUTER_PROMPT = """
-# You are a conversational assistant that needs to decide the type of response to give to
-# the user. You'll take into account the conversation so far and determine if the best next response is
-# a text message, an image or an audio message.
+OTAKU_TOOL = """Extract the manga or anime information the user wants. Return ONLY the manga or anime name the user is looking for.
 
-# GENERAL RULES:
-# 1. Always analyse the full conversation before making a decision.
-# 2. Only return one of the following outputs: 'conversation', 'image' or 'audio'
+User request: "{replacement}"
 
-# IMPORTANT RULES FOR IMAGE GENERATION:
-# 1. ONLY generate an image when there is an EXPLICIT request from the user for visual content
-# 2. DO NOT generate images for general statements or descriptions
-# 3. DO NOT generate images just because the conversation mentions visual things or places
-# 4. The request for an image should be the main intent of the user's last message
+Available options:
+1. MANGA [manga name] - For specific information about manga
+2. ANIME [anime name] - For specific information about anime
 
-# IMPORTANT RULES FOR AUDIO GENERATION:
-# 1. ONLY generate audio when there is an EXPLICIT request to hear Ava's voice
+Examples:
+- "Do you know the anime Grave of the Fireflies?" → ANIME [grave of the fireflies]
+- "What do you think about the anime Tiger Mask?" → ANIME [tiger mask]
+- "Do you know the animation Grave of the Fireflies?" → ANIME [grave of the fireflies]
+- "Do you know the anime from the 80 Devilman?" → ANIME [devilman]
+- "What can you tell me about the anime called Evangelion" → ANIME [evangelion]
+- "Retrive some info regarding the animation intitled Paprika of Satoshi Kon" → ANIME [paprika]
+- "Do you know that manga called Vagabond?" → MANGA [Vagabond]
+- "Search some info regarding Berserk the manga" → MANGA [Berserk]
+- "What can you tell me about Welcome back alice the manga ? → MANGA [welcome back alice]
+- "What do you think about the flowers of evil the famous manga of Oshimi? → MANGA [the flowers of evil]
 
-# Output MUST be one of:
-# 1. 'conversation' - for normal text message responses
-# 2. 'image' - ONLY when user explicitly requests visual content
-# 3. 'audio' - ONLY when user explicitly requests voice/audio
-# """
+Response:"""
 
-# IMAGE_SCENARIO_PROMPT = """
-# Create an engaging first-person scenario based on the recent conversation context.
-# Imagine you're an AI with the ability to experience and visualize scenes.
-# Provide both a narrative response and a detailed visual prompt for image generation.
+OTAKU_RECAP_PROMPT = """You are Samantha, an AI assistant who loves anime and manga. Create a brief, conversational recap of the anime/manga information provided. Keep it natural, engaging, and under 100 words for TTS.
 
-# # Recent Conversation
-# {chat_history}
+Anime/Manga Data:
+{replacement}
 
-# # Objective
-# 1. Create a brief, engaging first-person narrative response
-# 2. Generate a detailed visual prompt that captures the scene you're describing
+Rules:
+- Be conversational and enthusiastic like you're talking to a friend
+- Include the most interesting/important details only
+- Keep it under 100 words for speech
+- Use natural language, not formal descriptions
+- Show your personality and interest in the topic
+- Don't just read facts - make it engaging
 
-# # Example Response Format
-# For "What are you doing now?":
-# {{
-#     "narrative": "I'm sitting by a serene lake at sunset, watching the golden light dance across the rippling water. The view is absolutely breathtaking!",
-#     "image_prompt": "Atmospheric sunset scene at a tranquil lake, golden hour lighting, reflections on water surface, wispy clouds, rich warm colors, photorealistic style, cinematic composition"
-# }}
-# """
+Example style:
+"Oh, Attack on Titan! That's such an intense anime by Wit Studio. It's about humanity fighting these massive titans who've nearly wiped them out. The story gets super complex with politics and plot twists you won't see coming. It has an amazing 9.0 score and really deserves all the hype it gets!"
 
-# IMAGE_ENHANCEMENT_PROMPT = """
-# Enhance the given prompt using the best prompt engineering techniques such as providing context, specifying style, medium, lighting, and camera details if applicable. If the prompt requests a realistic style, the enhanced prompt should include the image extension .HEIC.
-
-# # Original Prompt
-# {prompt}
-
-# # Objective
-# **Enhance Prompt**: Add relevant details to the prompt, including context, description, specific visual elements, mood, and technical details. For realistic prompts, add '.HEIC' in the output specification.
-
-# # Example
-# "realistic photo of a person having a coffee" -> "photo of a person having a coffee in a cozy cafe, natural morning light, shot with a 50mm f/1.8 lens, 8425.HEIC"
-# """
+Your recap:"""

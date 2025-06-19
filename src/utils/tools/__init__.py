@@ -2,6 +2,7 @@ from .weather_tool import WeatherTool
 from .news_tool import NewsTool
 from .movies_tool import MoviesTool
 from .finance_tool import FinanceTool
+from .otaku_tool import OtakuTool
 
 class ToolManager:
     def __init__(self):
@@ -9,7 +10,8 @@ class ToolManager:
             "news": NewsTool(),
             "weather": WeatherTool(),
             "movies": MoviesTool(),
-            "finance": FinanceTool()
+            "finance": FinanceTool(),
+            "otaku": OtakuTool()
             #"spotify": SpotifyTool(), 
             #"search": SearchTool(),
         }

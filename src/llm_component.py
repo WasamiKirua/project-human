@@ -106,7 +106,7 @@ class LLMComponent:
                         "properties": {
                             "tool_type": {
                                 "type": "string",
-                                "enum": ["news", "weather", "movies", "finance"],
+                                "enum": ["news", "weather", "movies", "finance", "otaku"],
                                 "description": "Type of tool to use"
                             },
                             "reasoning": {
