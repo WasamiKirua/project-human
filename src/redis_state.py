@@ -82,10 +82,24 @@ class RedisState:
         if priority >= 20:  # Only log important state changes
             print(f"[State] 🚀 set_value called: {key}={value}, source={source}, priority={priority}")
         try:
-            result = asyncio.run(self.set(key, value, source, priority))
-            if priority >= 20:  # Only log results for important changes
-                print(f"[State] 📊 set_value result: {result}")
-            return result
+            # Check if we're already in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context - schedule the task but don't wait for it
+                # This is for fire-and-forget operations from sync code in async context
+                task = loop.create_task(self.set(key, value, source, priority))
+                # Don't wait for the result in this case to avoid blocking
+                if priority >= 20:
+                    print(f"[State] 📊 set_value scheduled as task")
+                return True  # Return True since we scheduled it successfully
+                    
+            except RuntimeError:
+                # No running loop, we're in a sync context - use asyncio.run
+                result = asyncio.run(self.set(key, value, source, priority))
+                if priority >= 20:  # Only log results for important changes
+                    print(f"[State] 📊 set_value result: {result}")
+                return result
+                
         except Exception as e:
             print(f"[State] ❌ Error in set_value: {e}")
             import traceback

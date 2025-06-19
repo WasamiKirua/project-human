@@ -10,6 +10,7 @@ from memory_component import MemoryComponent
 from utils.prompts import CHARACTER_CARD_PROMPT, ROUTING_PROMPT
 from utils.tools import ToolManager
 from redis_client import create_redis_client
+from listening_controller import ListeningController
 
 # Redis config & state
 r = create_redis_client()
@@ -32,6 +33,10 @@ class LLMComponent:
         self.short_term_memory = []  # Recent conversations
         self.long_term_memory = []   # Important/frequent topics
         self.memory_component = MemoryComponent()
+        
+        # Initialize shared listening controller once
+        self.listening_controller = ListeningController()
+        print("[LLM] ✅ Shared ListeningController initialized")
 
         # Add router configuration loading
         self.router_config = self.load_router_config()
@@ -190,6 +195,41 @@ class LLMComponent:
         print(f"[LLM] 📥 Received transcript directly: '{transcript}'")
         
         try:
+            # NEW: Check listening control commands FIRST using shared instance
+            print(f"[LLM] 🔍 Checking if '{transcript}' is a control command...")
+            control_action = self.listening_controller.check_control_command(transcript)
+            
+            if control_action == "stop":
+                acknowledgment = self.listening_controller.handle_stop_listening()
+                print(f"[LLM] 🛑 Stop listening command - sending acknowledgment: '{acknowledgment}'")
+                
+                # Send immediate TTS acknowledgment (interrupt current speech)
+                await self.send_immediate_acknowledgment(acknowledgment)
+                
+                # Update GUI status
+                await self.update_gui_listening_status("paused")
+                return acknowledgment
+                
+            elif control_action == "start":
+                acknowledgment = self.listening_controller.handle_start_listening()
+                print(f"[LLM] ▶️ Start listening command - sending acknowledgment: '{acknowledgment}'")
+                
+                # Send immediate TTS acknowledgment
+                await self.send_immediate_acknowledgment(acknowledgment)
+                
+                # Update GUI status
+                await self.update_gui_listening_status("listening")
+                return acknowledgment
+            
+            # Check if listening is currently paused
+            if self.listening_controller.is_listening_paused():
+                print(f"[LLM] 💤 Listening is PAUSED - ignoring non-control transcript: '{transcript}'")
+                print(f"[LLM] 🎯 System is listening for: {self.listening_controller.start_phrases}")
+                return None  # Ignore transcript completely
+            else:
+                print(f"[LLM] ✅ Listening is ACTIVE - processing transcript: '{transcript}'")
+            
+            # Continue with normal processing if listening is active
             # Set thinking state
             await state.set("ai_thinking", "True", source="llm", priority=10)
 
@@ -214,6 +254,36 @@ class LLMComponent:
             traceback.print_exc()
             await state.set("ai_thinking", "False", source="llm", priority=10)
             raise
+
+    async def send_immediate_acknowledgment(self, acknowledgment: str):
+        """Send immediate TTS acknowledgment (interrupts current speech)"""
+        try:
+            print(f"[LLM] 🎤 Sending immediate TTS acknowledgment: '{acknowledgment}'")
+            
+            # Set interrupt flag to stop current speech
+            await state.set("interrupt_ai_speech", "True", source="llm", priority=10)
+            
+            # Set the acknowledgment text for TTS
+            await state.set("tts_text", acknowledgment, source="llm", priority=8)
+            
+            # Set TTS ready to trigger immediate processing
+            await state.set("tts_ready", "True", source="llm", priority=8)
+            
+            print(f"[LLM] ✅ Immediate TTS acknowledgment sent")
+            
+        except Exception as e:
+            print(f"[LLM] ❌ Error sending immediate acknowledgment: {e}")
+
+    async def update_gui_listening_status(self, status: str):
+        """Update GUI listening status indicator"""
+        try:
+            print(f"[LLM] 🎀 Updating GUI listening status: {status}")
+            
+            # Store status in Redis for GUI to pick up
+            await state.set("gui_listening_status", status, source="llm", priority=5)
+            
+        except Exception as e:
+            print(f"[LLM] ❌ Error updating GUI status: {e}")
 
     async def process_conversation(self, transcript):
         """Handle conversational requests (extracted from original process_transcript)"""

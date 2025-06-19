@@ -243,7 +243,6 @@ Examples:
 - "Recommend some chill music" → TOOL (spotify)
 - "Play the song Bohemian Rhapsody" → TOOL (spotify)
 - "Find music by Daft Punk" → TOOL (spotify)
-- "Search for restaurants" → TOOL (search)
 
 Respond by calling the appropriate function."""
 

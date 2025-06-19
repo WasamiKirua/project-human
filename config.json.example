@@ -91,7 +91,7 @@
 
     "router": {
       "provider": "openrouter",
-      "models": "anthropic/claude-3-haiku,openai/gpt-4o-mini,google/gemini-flash-1.5",
+      "models": "anthropic/claude-3-haiku,openai/gpt-4o-mini,google/gemini-flash-1.5"
     },
 
     "llm": {
@@ -106,13 +106,13 @@
       "ollama": {
         "_comment": "Set to true if want to use",
         "enabled": "false",
-        "port": "11434",
+        "port": "11434"
       },
 
       "lmstudio": {
         "_comment": "Set to true if want to use",
-        "enabled": "false"
-        "port": "1234",
+        "enabled": "false",
+        "port": "1234"
       },
 
       "vllm": {
@@ -122,36 +122,45 @@
         "model": "", 
         "vast_ai_ip": "",
         "vast_ai_port": ""
+      }
+    },
+
+    "tools": {
+      "weather": {
+        "api_key": "",
+        "base_url": "https://api.weatherstack.com/",
+        "default_location": "Tokyo, Japan"
       },
 
-      "tools": {
-        "weather": {
-          "api_key": "",
-          "base_url": "https://api.weatherstack.com/",
-          "default_location": "Tokyo, Japan"
-        },
+      "news": {
+        "tavily_api_key": "",
+        "default_news": "Latest world news",
+        "max_results": 3
+      },
 
-        "news": {
-          "tavily_api_key": "",
-          "default_news": "Latest world news",
-          "max_results": 3
-        },
+      "movies": {
+        "tavily_api_key": "",
+        "default_movie": "Best movies of the year",
+        "max_results": 3
+      },
 
-        "movies": {
-          "tavily_api_key": "",
-          "default_movie": "Best movies of the year",
-          "max_results": 3
-        },
+      "finance": {
+        "default_finance": "Latest price of Bitcoin",
+        "max_results": 2
+      },
 
-        "finance": {
-          "default_finance": "Latest price of Bitcoin",
-          "max_results": 2
-        },
-
-        "spotify": {
-          "default_search_limit": 5,
-          "enable_recommendations": "true"
-        }
+      "spotify": {
+        "default_search_limit": 5,
+        "enable_recommendations": "true"
       }
+    },
+
+    "listening_control": {
+      "enabled": true,
+      "user_name": "Simon",
+      "stop_phrases": ["Samantha stop listen", "Samantha stop listening"],
+      "start_phrases": ["Samantha start listen", "Samantha start listening"],
+      "stop_acknowledgment": "Ok {user_name} I stop listening",
+      "start_acknowledgment": "Ok {user_name} I'm listening again"
     }
-  }
+}

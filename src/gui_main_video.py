@@ -16,6 +16,8 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 
 from redis_state import RedisState
 from redis_client import create_redis_client
+from listening_controller import ListeningController
+from listening_controller import ListeningController
 
 # Redis config & state
 r = create_redis_client()
@@ -32,6 +34,7 @@ class SignalBridge(QObject):
     start_auto_listening = Signal()  # New signal for auto-restart
     switch_to_idle_video = Signal()  # Signal for switching to idle video
     switch_to_speaking_video = Signal()  # Signal for switching to speaking video
+    update_listening_status = Signal(str)  # NEW: "listening" or "paused"
 
 bridge = SignalBridge()
 
@@ -340,6 +343,9 @@ class MicControlApp(QWidget):
         # Start idle video immediately
         if self.video_manager.videos_available:
             QTimer.singleShot(500, self.video_manager.start_idle_video)
+            
+        # Initialize listening status
+        QTimer.singleShot(1000, self.initialize_listening_status)
 
     def _setup_ui(self):
         """Setup the user interface"""
@@ -353,6 +359,22 @@ class MicControlApp(QWidget):
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setStyleSheet("font-weight: bold; padding: 5px;")
         main_layout.addWidget(self.status_label)
+        
+        # NEW: Kawaii listening status indicator
+        self.listening_status_label = QLabel("✨ Listening~", self)
+        self.listening_status_label.setAlignment(Qt.AlignCenter)
+        self.listening_status_label.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                font-weight: bold;
+                padding: 3px 8px;
+                border-radius: 12px;
+                background-color: #E8F5E8;
+                color: #4CAF50;
+                margin: 2px;
+            }
+        """)
+        main_layout.addWidget(self.listening_status_label)
         
         # Video widget (main content area)
         if self.video_manager.videos_available:
@@ -409,6 +431,7 @@ class MicControlApp(QWidget):
         bridge.start_auto_listening.connect(self.start_auto_listening_delayed, Qt.QueuedConnection)
         bridge.switch_to_idle_video.connect(self.switch_to_idle_video, Qt.QueuedConnection)
         bridge.switch_to_speaking_video.connect(self.switch_to_speaking_video, Qt.QueuedConnection)
+        bridge.update_listening_status.connect(self.update_listening_status, Qt.QueuedConnection)  # NEW kawaii indicators
 
     def start_auto_listening_delayed(self):
         """Start auto-listening with delay - called from main thread via signal"""
@@ -508,6 +531,49 @@ class MicControlApp(QWidget):
         if self.video_manager.videos_available:
             self.video_manager.start_speaking_video()
 
+    def update_listening_status(self, status: str):
+        """Update the kawaii listening status indicator"""
+        print(f"[GUI] 🎀 Updating listening status to: {status}")
+        
+        if status == "listening":
+            self.listening_status_label.setText("✨ Listening~")
+            self.listening_status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 3px 8px;
+                    border-radius: 12px;
+                    background-color: #E8F5E8;
+                    color: #4CAF50;
+                    margin: 2px;
+                }
+            """)
+        elif status == "paused":
+            self.listening_status_label.setText("💤 Sleeping~")
+            self.listening_status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 3px 8px;
+                    border-radius: 12px;
+                    background-color: #FFE8F0;
+                    color: #FF6B9D;
+                    margin: 2px;
+                }
+            """)
+
+    def initialize_listening_status(self):
+        """Initialize the listening status indicator based on current state"""
+        try:
+            listening_controller = ListeningController()
+            current_status = listening_controller.get_listening_status()
+            print(f"[GUI] 🎀 Initializing listening status: {current_status}")
+            self.update_listening_status(current_status)
+        except Exception as e:
+            print(f"[GUI] ⚠️ Could not initialize listening status: {e}")
+            # Default to listening state
+            self.update_listening_status("listening")
+
     def handle_state_change(self, key, value):
         """Handle different state changes from Redis"""
         print(f"[GUI] State change: {key} = {value}")
@@ -539,6 +605,10 @@ class MicControlApp(QWidget):
                 bridge.update_status.emit("Status: AI Speaking 🤖")
                 bridge.update_button.emit("🔄 AI Speaking...", False)
                 bridge.start_animation.emit()
+                
+        elif key == "gui_listening_status":
+            # NEW: Handle listening status updates
+            bridge.update_listening_status.emit(value)
                 # Switch to speaking video
                 bridge.switch_to_speaking_video.emit()
             else:

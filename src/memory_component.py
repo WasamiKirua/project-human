@@ -380,11 +380,28 @@ class MemoryComponent:
                 print(f"[Memory] 📤 Input: '{query}'")
                 print(f"[Memory] 📥 Groq response: '{result}'")
                 
-                # Enhanced JSON parsing to avoid content extraction bugs
+                # Enhanced JSON parsing to handle markdown and double braces
+                def clean_groq_response(response_text):
+                    """Clean Groq response of markdown formatting and double braces"""
+                    # Remove markdown code fences if present
+                    cleaned = re.sub(r'^```json\s*', '', response_text.strip())
+                    cleaned = re.sub(r'\s*```$', '', cleaned)
+                    
+                    # Fix double curly braces
+                    cleaned = re.sub(r'^\{\{', '{', cleaned)
+                    cleaned = re.sub(r'\}\}$', '}', cleaned)
+                    
+                    # Remove extra whitespace and newlines
+                    cleaned = cleaned.strip()
+                    return cleaned
+
                 try:
-                    # Try to parse as complete JSON first
+                    # Clean the response first
+                    cleaned_result = clean_groq_response(result)
+                    
+                    # Try to parse as complete JSON
                     import json
-                    parsed_result = json.loads(result)
+                    parsed_result = json.loads(cleaned_result)
                     
                     if parsed_result.get("is_important") == True:
                         formatted_memory = parsed_result.get("formatted_memory")
@@ -398,9 +415,12 @@ class MemoryComponent:
                         print(f"[Memory] ✅ Correctly identified as not important")
                         return None
                         
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     # Fallback to regex extraction if JSON parsing fails
-                    print(f"[Memory] ⚠️ JSON parsing failed, using regex fallback")
+                    print(f"[Memory] ⚠️ JSON parsing failed after cleaning: {e}")
+                    print(f"[Memory] 📝 Original response: {repr(result)}")
+                    print(f"[Memory] 📝 Cleaned response: {repr(cleaned_result)}")
+                    
                     if '"is_important": true' in result:
                         memory_match = re.search(r'"formatted_memory":\s*"([^"]+)"', result)
                         if memory_match:

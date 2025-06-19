@@ -11,6 +11,7 @@ from PySide6.QtCore import QTimer, Qt, Signal, QObject
 from PySide6.QtGui import QPainter, QColor
 from redis_state import RedisState
 from redis_client import create_redis_client
+from listening_controller import ListeningController
 
 # Redis config & state
 r = create_redis_client()
@@ -25,6 +26,7 @@ class SignalBridge(QObject):
     start_animation = Signal()
     stop_animation = Signal()
     start_auto_listening = Signal()  # New signal for auto-restart
+    update_listening_status = Signal(str)  # NEW: "listening" or "paused"
 
 bridge = SignalBridge()
 
@@ -194,8 +196,23 @@ class MicControlApp(QWidget):
         self.status_label = QLabel("Status: Starting up... 🚀", self)
         self.status_label.setAlignment(Qt.AlignCenter)
         
+        # NEW: Kawaii listening status indicator
+        self.listening_status_label = QLabel("✨ Listening~", self)
+        self.listening_status_label.setAlignment(Qt.AlignCenter)
+        self.listening_status_label.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                font-weight: bold;
+                padding: 3px 8px;
+                border-radius: 12px;
+                background-color: #E8F5E8;
+                color: #4CAF50;
+                margin: 2px;
+            }
+        """)
+        
         self.talk_button = QPushButton("🎤 Start Talking", self)
-        self.talk_button.clicked.connect(self.start_talking)
+        self.talk_button.clicked.connect(self.manual_start_talking)
         
         # Add manual health check button
         self.health_button = QPushButton("🏥 Check System Health", self)
@@ -206,6 +223,7 @@ class MicControlApp(QWidget):
         # Layout
         layout = QVBoxLayout()
         layout.addWidget(self.status_label)
+        layout.addWidget(self.listening_status_label)  # NEW: Kawaii listening indicator
         layout.addWidget(self.wave_widget, stretch=1)
         layout.addWidget(self.talk_button)
         layout.addWidget(self.health_button)  # Add health button
@@ -217,9 +235,13 @@ class MicControlApp(QWidget):
         bridge.start_animation.connect(self.start_wave_animation, Qt.QueuedConnection)
         bridge.stop_animation.connect(self.stop_wave_animation, Qt.QueuedConnection)
         bridge.start_auto_listening.connect(self.start_auto_listening_delayed, Qt.QueuedConnection)
+        bridge.update_listening_status.connect(self.update_listening_status, Qt.QueuedConnection)  # NEW
         
         # Auto health check on startup (after 3 seconds)
         QTimer.singleShot(3000, self.startup_health_check)
+        
+        # Initialize listening status
+        QTimer.singleShot(1000, self.initialize_listening_status)
 
     def startup_health_check(self):
         """Health check when GUI starts"""
@@ -259,13 +281,36 @@ class MicControlApp(QWidget):
     def auto_start_listening(self):
         """Automatically start listening in continuous mode"""
         if self.continuous_mode and self.current_state == "ready":
-            print("[GUI] Auto-starting listening in continuous mode")
-            bridge.update_status.emit("Status: Auto-listening... 🔄")
+            # Check if listening is paused - but still allow STT for control commands
+            listening_paused = state.get_value("listening_paused")
+            if listening_paused == "True":
+                print("[GUI] 🎯 Auto-restart in PAUSED mode - listening for control commands only")
+                bridge.update_status.emit("Status: Paused (listening for 'start listening') ⏸️")
+            else:
+                print("[GUI] Auto-starting listening in continuous mode")
+                bridge.update_status.emit("Status: Auto-listening... 🔄")
+                
             self.start_talking()
+
+    def manual_start_talking(self):
+        """Manual start talking - can override paused state"""
+        listening_paused = state.get_value("listening_paused")
+        if listening_paused == "True":
+            print("[GUI] 🔓 Manual override - unpausing listening")
+            # Reset paused state and allow start
+            state.set_value("listening_paused", "False", source="gui", priority=20)
+            
+        # Proceed with normal start
+        self.start_talking()
 
     def start_talking(self):
         """Trigger the STT process through Redis state with health check"""
         print(f"[GUI] 🎙️ start_talking() called - State: {self.current_state}")
+        
+        # Check if listening is paused - but still allow STT for control commands
+        listening_paused = state.get_value("listening_paused") 
+        if listening_paused == "True":
+            print("[GUI] 🎯 Starting STT in PAUSED mode - control commands only")
         
         if self.current_state == "ready":
             self.current_state = "requesting"
@@ -345,6 +390,49 @@ class MicControlApp(QWidget):
         """Stop wave animation (thread-safe)"""
         self.wave_widget.stop_animation()
 
+    def update_listening_status(self, status: str):
+        """Update the kawaii listening status indicator"""
+        print(f"[GUI] 🎀 Updating listening status to: {status}")
+        
+        if status == "listening":
+            self.listening_status_label.setText("✨ Listening~")
+            self.listening_status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 3px 8px;
+                    border-radius: 12px;
+                    background-color: #E8F5E8;
+                    color: #4CAF50;
+                    margin: 2px;
+                }
+            """)
+        elif status == "paused":
+            self.listening_status_label.setText("⏸️ Paused (say 'start listening')") 
+            self.listening_status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 3px 8px;
+                    border-radius: 12px;
+                    background-color: #FFF3CD;
+                    color: #856404;
+                    margin: 2px;
+                }
+            """)
+
+    def initialize_listening_status(self):
+        """Initialize the listening status indicator based on current state"""
+        try:
+            listening_controller = ListeningController()
+            current_status = listening_controller.get_listening_status()
+            print(f"[GUI] 🎀 Initializing listening status: {current_status}")
+            self.update_listening_status(current_status)
+        except Exception as e:
+            print(f"[GUI] ⚠️ Could not initialize listening status: {e}")
+            # Default to listening state
+            self.update_listening_status("listening")
+
     def handle_state_change(self, key, value):
         """Handle different state changes from Redis"""
         print(f"[GUI] State change: {key} = {value}")
@@ -407,6 +495,10 @@ class MicControlApp(QWidget):
             if value == "True":
                 self.current_state = "preparing_speech"
                 bridge.update_status.emit("Status: Preparing Speech... 🔄")
+                
+        elif key == "gui_listening_status":
+            # NEW: Handle listening status updates
+            bridge.update_listening_status.emit(value)
 
 def redis_listener():
     """Listen for Redis pub/sub messages and update GUI accordingly"""

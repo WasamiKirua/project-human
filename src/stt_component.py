@@ -525,8 +525,9 @@ async def on_user_wants_to_talk(key, value, old):
     if value == "True":
         print(f"[STT] 🎯 USER_WANTS_TO_TALK triggered: {key} = {value}")
         
-        # Reset the trigger
-        await state.set("user_wants_to_talk", "False", source="stt", priority=10)
+        # Reset the trigger with higher priority than GUI (which uses 25)
+        print(f"[STT] 🔄 Resetting user_wants_to_talk with priority 30...")
+        await state.set("user_wants_to_talk", "False", source="stt", priority=30)
         
         # Check if AI is currently speaking
         ai_speaking = state.get_value("ai_speaking")
@@ -555,16 +556,17 @@ async def on_user_wants_to_talk(key, value, old):
             # Pass transcript directly to LLM (not Redis)
             await trigger_llm_processing(transcript)
             
-            # Set flags only when we have actual content
             print("[STT] Setting stt_ready = True")
             await state.set("stt_ready", "True", source="stt", priority=20)
             print("[STT] Setting human_speaking = False") 
             await state.set("human_speaking", "False", source="stt", priority=10)
             print("[STT] Speech recognition complete")
+            print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
         else:
             print("[STT] No transcript generated - not triggering LLM")
             print("[STT] Setting human_speaking = False") 
             await state.set("human_speaking", "False", source="stt", priority=10)
+            print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
             
             # Signal GUI that no speech was detected
             await state.set("stt_ready", "False", source="stt", priority=20)
@@ -577,6 +579,11 @@ async def on_user_wants_to_talk(key, value, old):
 async def stt_listener():
     """Listen for user_wants_to_talk events"""
     global continuous_monitor
+    
+    # Initialize critical states to proper defaults at startup
+    await state.set("ai_speaking", "False", source="startup", priority=10)
+    await state.set("ai_thinking", "False", source="startup", priority=10)
+    print("[STT] ✅ Initialized startup states")
     
     whisper_server_url = json_config['whisper_server_url']
     sampling_rate = json_config['sampling_rate']
