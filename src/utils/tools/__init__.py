@@ -3,7 +3,6 @@ from .news_tool import NewsTool
 from .movies_tool import MoviesTool
 from .finance_tool import FinanceTool
 from .otaku_tool import OtakuTool
-from .spotify_tool import SpotifyTool
 
 class ToolManager:
     def __init__(self):
@@ -13,7 +12,6 @@ class ToolManager:
             "movies": MoviesTool(),
             "finance": FinanceTool(),
             "otaku": OtakuTool(),
-            "spotify": SpotifyTool(), 
         }
     
     async def execute_tool(self, tool_type, transcript, context=None):

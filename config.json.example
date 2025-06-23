@@ -9,7 +9,7 @@
         "min_priority": 2
       },
       "tts_ready": {
-        "allowed_sources": ["llm"],
+        "allowed_sources": ["llm", "tts"],
         "min_priority": 5
       },
       "tts_text": {
@@ -17,7 +17,7 @@
         "min_priority": 3
       },
       "user_wants_to_talk": {
-        "allowed_sources": ["gui", "stt"],
+        "allowed_sources": ["gui", "stt", "listening_controller", "llm"],
         "min_priority": 1
       },
       "stt_ready": {
@@ -31,6 +31,18 @@
       "interrupt_ai_speech": {
         "allowed_sources": ["stt", "tts", "llm"],
         "min_priority": 10
+      },
+      "gui_listening_status": {
+        "allowed_sources": ["llm"],
+        "min_priority": 5
+      },
+      "listening_paused": {
+        "allowed_sources": ["listening_controller", "gui", "llm"],
+        "min_priority": 1
+      },
+      "acknowledgment_playing": {
+        "allowed_sources": ["llm", "tts"],
+        "min_priority": 5
       }
     },
 
@@ -69,9 +81,7 @@
       "groq_api_key": "",
       "open_router": "",
       "replicate_api_key": "",
-      "tavily_api_key": "",
-      "spotify_client_id": "",
-      "spotify_client_secret": ""
+      "tavily_api_key": ""
     },
 
     "memory": {
@@ -147,11 +157,6 @@
       "finance": {
         "default_finance": "Latest price of Bitcoin",
         "max_results": 2
-      },
-
-      "spotify": {
-        "default_search_limit": 5,
-        "enable_recommendations": "true"
       }
     },
 

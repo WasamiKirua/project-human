@@ -489,9 +489,9 @@ class MicControlApp(QWidget):
             print(f"[GUI]    ai_speaking: {current_ai_speaking}")
             print(f"[GUI]    human_speaking: {current_human_speaking}")
             
-            # Use higher priority than STT component reset (which uses 30)
-            print("[GUI] 🚀 Setting user_wants_to_talk = True with source=gui, priority=35")
-            result = state.set_value("user_wants_to_talk", "True", source="gui", priority=35)
+            # Use priority 38 - higher than STT control commands (37) to ensure GUI can always restart
+            print("[GUI] 🚀 Setting user_wants_to_talk = True with source=gui, priority=38")
+            result = state.set_value("user_wants_to_talk", "True", source="gui", priority=38)
             print(f"[GUI] 📊 State update result: {result}")
             
             if result:
@@ -614,19 +614,11 @@ class MicControlApp(QWidget):
                 bridge.update_status.emit("Status: AI Speaking 🤖")
                 bridge.update_button.emit("🔄 AI Speaking...", False)
                 bridge.start_animation.emit()
-                
-        elif key == "gui_listening_status":
-            # Handle listening status updates
-            bridge.update_listening_status.emit(value)
-            
-        elif key == "listening_paused" and value == "True":
-            # When listening is paused, TTS will handle triggering control command listening
-            print("[GUI] 🎯 Listening paused detected - TTS will trigger control command listening after acknowledgment")
                 # Switch to speaking video
                 bridge.switch_to_speaking_video.emit()
             else:
                 # AI finished speaking - switch back to idle video and auto-restart listening
-                print(f"[GUI] 🎤 AI finished speaking. Switching to idle video and emitting auto-restart signal")
+                print(f"[GUI] 🎤 AI finished speaking. Emitting auto-restart signal")
                 self.current_state = "ready"
                 bridge.update_status.emit("Status: AI Done - Auto-listening soon... 🔄")
                 bridge.update_button.emit("🔄 Auto-listening...", False)
@@ -636,6 +628,14 @@ class MicControlApp(QWidget):
                 
                 # Use signal to safely trigger timer from main thread
                 bridge.start_auto_listening.emit()
+                
+        elif key == "gui_listening_status":
+            # Handle listening status updates
+            bridge.update_listening_status.emit(value)
+            
+        elif key == "listening_paused" and value == "True":
+            # When listening is paused, TTS will handle triggering control command listening
+            print("[GUI] 🎯 Listening paused detected - TTS will trigger control command listening after acknowledgment")
         
         elif key == "interrupt_ai_speech":
             if value == "true":
