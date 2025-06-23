@@ -568,29 +568,19 @@ async def on_user_wants_to_talk(key, value, old):
             await state.set("human_speaking", "False", source="stt", priority=10)
             print("[STT] Speech recognition complete")
             
-            # Check if in paused mode - if so, automatically restart listening for control commands
-            listening_paused = state.get_value("listening_paused")
-            if listening_paused == "True":
-                print("[STT] 🎯 PAUSED mode - automatically restarting control command listening")
-                await asyncio.sleep(0.5)  # Brief delay
-                await state.set("user_wants_to_talk", "True", source="stt", priority=37)
-                print("[STT] ✅ Control command listening restarted")
-            else:
-                print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
+            print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
+            # Reset to normal priority - GUI priority 40 can override this
+            await state.set("user_wants_to_talk", "False", source="stt", priority=30)
+            print("[STT] 🔄 Reset to normal priority for GUI compatibility")
         else:
             print("[STT] No transcript generated - not triggering LLM")
             print("[STT] Setting human_speaking = False") 
             await state.set("human_speaking", "False", source="stt", priority=10)
             
-            # Check if in paused mode - if so, automatically restart listening for control commands
-            listening_paused = state.get_value("listening_paused")
-            if listening_paused == "True":
-                print("[STT] 🎯 PAUSED mode - automatically restarting control command listening (no transcript)")
-                await asyncio.sleep(0.5)  # Brief delay
-                await state.set("user_wants_to_talk", "True", source="stt", priority=37)
-                print("[STT] ✅ Control command listening restarted")
-            else:
-                print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
+            print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
+            # Reset to normal priority - GUI priority 40 can override this
+            await state.set("user_wants_to_talk", "False", source="stt", priority=30)
+            print("[STT] 🔄 Reset to normal priority for GUI compatibility")
             
             # Signal GUI that no speech was detected
             await state.set("stt_ready", "False", source="stt", priority=20)

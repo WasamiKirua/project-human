@@ -209,6 +209,10 @@ class LLMComponent:
                 # Update GUI status
                 await self.update_gui_listening_status("paused")
                 
+                # Start auto-restart task for control command listening
+                asyncio.create_task(self.restart_control_listening_after_acknowledgment())
+                print("[LLM] 🔄 Auto-restart task created for control command listening")
+                
                 return acknowledgment
                 
             elif control_action == "start":
@@ -218,14 +222,28 @@ class LLMComponent:
                 # Send immediate TTS acknowledgment
                 await self.send_immediate_acknowledgment(acknowledgment)
                 
+                # Clear any lingering user_wants_to_talk state with HIGH priority (higher than GUI's 38)
+                await state.set("user_wants_to_talk", "False", source="llm", priority=39)
+                print("[LLM] 🧹 Cleared user_wants_to_talk state with priority 39")
+                
                 # Update GUI status
                 await self.update_gui_listening_status("listening")
+                
+                # Start auto-restart task for normal listening (use lower priority method)
+                asyncio.create_task(self.restart_normal_listening_after_acknowledgment())
+                print("[LLM] 🔄 Auto-restart task created for normal listening")
+                
                 return acknowledgment
             
             # Check if listening is currently paused
             if self.listening_controller.is_listening_paused():
                 print(f"[LLM] 💤 Listening is PAUSED - ignoring non-control transcript: '{transcript}'")
                 print(f"[LLM] 🎯 System is listening for: {self.listening_controller.start_phrases}")
+                
+                # CRITICAL: Restart control command listening immediately
+                await state.set("user_wants_to_talk", "True", source="llm", priority=39)
+                print("[LLM] 🔄 Restarted control command listening after ignoring non-control transcript")
+                
                 return None  # Ignore transcript completely
             else:
                 print(f"[LLM] ✅ Listening is ACTIVE - processing transcript: '{transcript}'")
@@ -255,6 +273,66 @@ class LLMComponent:
             traceback.print_exc()
             await state.set("ai_thinking", "False", source="llm", priority=10)
             raise
+
+    async def restart_normal_listening_after_acknowledgment(self):
+        """Restart normal listening after acknowledgment completes (allows GUI to take over)"""
+        print("[LLM] 🔄 Starting auto-restart sequence for normal listening...")
+        
+        # Wait for TTS to start and complete the acknowledgment
+        await asyncio.sleep(4.0)  # Give TTS time to start and speak acknowledgment
+        
+        # Additional check: wait for AI to finish speaking if still active
+        max_wait = 10  # Maximum additional wait time
+        wait_time = 0
+        while wait_time < max_wait:
+            ai_speaking = state.get_value("ai_speaking")  # Fixed: use get_value() instead of get()
+            if ai_speaking != "True":
+                break
+            await asyncio.sleep(0.5)
+            wait_time += 0.5
+        else:
+            print("[LLM] ⚠️ AI still speaking after acknowledgment timeout")
+        
+        if wait_time > 0:
+            print(f"[LLM] ✅ AI speaking completed after {wait_time:.1f}s")
+        else:
+            print("[LLM] ✅ Acknowledgment completed successfully")
+        
+        # Clear the control state entirely to remove priority restrictions
+        await state.clear_key("user_wants_to_talk", source="llm")
+        print("[LLM] 🧹 Cleared user_wants_to_talk state entirely - no priority restrictions")
+        
+        # Brief pause to ensure state is cleared
+        await asyncio.sleep(0.1)
+        
+        # Now GUI can successfully set user_wants_to_talk=True with its priority (38)
+        print("[LLM] ✅ State cleared completely - GUI can now restart with priority 38")
+
+    async def restart_control_listening_after_acknowledgment(self):
+        """Restart control command listening after acknowledgment completes"""
+        print("[LLM] 🔄 Starting auto-restart sequence for control command listening...")
+        
+        # Wait for TTS to start and complete the acknowledgment
+        await asyncio.sleep(4.0)  # Give TTS time to start and speak acknowledgment
+        
+        # Additional check: wait for AI to finish speaking if still active
+        max_wait = 10  # Maximum additional wait time
+        wait_count = 0
+        while wait_count < max_wait:
+            ai_speaking = state.get_value("ai_speaking")
+            if ai_speaking != "True":
+                break
+            await asyncio.sleep(0.1)
+            wait_count += 0.1
+        
+        if wait_count >= max_wait:
+            print("[LLM] ⚠️ Timeout waiting for acknowledgment to complete, proceeding anyway")
+        else:
+            print("[LLM] ✅ Acknowledgment completed successfully")
+        
+        # Now restart listening with HIGH priority (higher than GUI's 38)
+        await state.set("user_wants_to_talk", "True", source="llm", priority=39)
+        print("[LLM] ✅ Control command listening restarted from LLM with priority 39")
 
     async def send_immediate_acknowledgment(self, acknowledgment: str):
         """Send immediate TTS acknowledgment (interrupts current speech)"""

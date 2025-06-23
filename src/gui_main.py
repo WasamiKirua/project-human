@@ -352,9 +352,9 @@ class MicControlApp(QWidget):
             print(f"[GUI]    ai_speaking: {current_ai_speaking}")
             print(f"[GUI]    human_speaking: {current_human_speaking}")
             
-            # Use higher priority than STT component reset (which uses 30)
-            print("[GUI] 🚀 Setting user_wants_to_talk = True with source=gui, priority=35")
-            result = state.set_value("user_wants_to_talk", "True", source="gui", priority=35)
+            # Use priority 38 - higher than STT control commands (37) to ensure GUI can always restart
+            print("[GUI] 🚀 Setting user_wants_to_talk = True with source=gui, priority=38")
+            result = state.set_value("user_wants_to_talk", "True", source="gui", priority=38)
             print(f"[GUI] 📊 State update result: {result}")
             
             if result:

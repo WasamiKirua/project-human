@@ -145,8 +145,13 @@ class ListeningController:
             Acknowledgment text for TTS
         """
         print(f"[ListeningController] ✨ Setting listening to active state")
+        
+        # Clear control state with priority 38 then immediately allow GUI to take over
+        self.state.set_value("user_wants_to_talk", "False", source="listening_controller", priority=38)
+        print(f"[ListeningController] 🧹 Cleared control state with priority 38")
+        print(f"[ListeningController] ✅ State cleared - GUI can now restart with same priority")
+        
         self.state.set_value("listening_paused", "False", source="listening_controller", priority=10)
-        print(f"[ListeningController] ✅ Listening active state confirmed")
         
         # Format acknowledgment with user name
         acknowledgment = self.start_acknowledgment.format(user_name=self.user_name)

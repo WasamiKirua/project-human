@@ -76,6 +76,24 @@ class RedisState:
         full_key = f"state:{key}"
         return self.r.hget(full_key, "value")
 
+    async def clear_key(self, key: str, source: str = "system") -> bool:
+        """Clear a key entirely from Redis, removing all priority restrictions"""
+        full_key = f"state:{key}"
+        try:
+            result = self.r.delete(full_key)
+            if result:
+                print(f"[State] 🗑️ Cleared key {key} entirely (source={source})")
+                # Publish the clear event
+                message = f"{key}=CLEARED"
+                self.r.publish(self.pub_channel, message)
+                return True
+            else:
+                print(f"[State] ⚠️ Key {key} didn't exist to clear")
+                return True  # Consider this success since the goal is achieved
+        except Exception as e:
+            print(f"[State] ❌ Error clearing key {key}: {e}")
+            return False
+
     def set_value(self, key: str, value: Any, source: str = "system", priority: int = 1):
         # Synchronous version of set (for non-async components)
         # Only log for debugging high-priority state changes
