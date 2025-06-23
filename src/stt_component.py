@@ -52,6 +52,7 @@ class ContinuousAudioMonitor:
         self.is_monitoring = False
         self.stream = None
         self.chunk_buffer = np.array([], dtype=np.float32)
+        self.last_interruption_time = 0  # Add debouncing timestamp
         
     def process_vad_chunk(self, audio_chunk):
         """Process audio chunk with Silero VAD"""
@@ -86,24 +87,29 @@ class ContinuousAudioMonitor:
                 # Check if AI is currently speaking
                 ai_currently_speaking = state.get_value("ai_speaking")
                 if ai_currently_speaking == "True":
-                    print("[STT Monitor] 🗣️ User speech detected during AI speaking - triggering interruption")
-                    # Use direct Redis call instead of state.set_value to avoid asyncio issues
-                    try:
-                        full_key = "state:interrupt_ai_speech"
-                        ts = int(time.time())
-                        state.r.hset(full_key, mapping={
-                            "value": "true",
-                            "source": "stt",
-                            "priority": 10,
-                            "timestamp": ts
-                        })
-                        # Publish the message directly
-                        state.r.publish(state.pub_channel, "interrupt_ai_speech=true")
-                        print("[STT Monitor] ✅ Interruption signal sent via direct Redis")
-                    except Exception as e:
-                        print(f"[STT Monitor] ❌ Error setting interruption state: {e}")
-                    # Small delay to prevent multiple rapid triggers
-                    time.sleep(0.2)
+                    # Debouncing: only send interruption if 1.5 seconds have passed since last one
+                    current_time = time.time()
+                    if current_time - self.last_interruption_time >= 1.5:
+                        print("[STT Monitor] 🗣️ User speech detected during AI speaking - triggering interruption")
+                        # Use direct Redis call instead of state.set_value to avoid asyncio issues
+                        try:
+                            full_key = "state:interrupt_ai_speech"
+                            ts = int(current_time)
+                            state.r.hset(full_key, mapping={
+                                "value": "true",
+                                "source": "stt",
+                                "priority": 10,
+                                "timestamp": ts
+                            })
+                            # Publish the message directly
+                            state.r.publish(state.pub_channel, "interrupt_ai_speech=true")
+                            print("[STT Monitor] ✅ Interruption signal sent via direct Redis")
+                            self.last_interruption_time = current_time  # Update debounce timestamp
+                        except Exception as e:
+                            print(f"[STT Monitor] ❌ Error setting interruption state: {e}")
+                    else:
+                        # Skip rapid-fire interruptions (too soon since last one)
+                        pass
     
     def start_monitoring(self):
         """Start continuous audio monitoring"""
@@ -525,7 +531,7 @@ async def on_user_wants_to_talk(key, value, old):
     if value == "True":
         print(f"[STT] 🎯 USER_WANTS_TO_TALK triggered: {key} = {value}")
         
-        # Reset the trigger with higher priority than GUI (which uses 25)
+        # Reset the trigger with higher priority to overcome GUI's trigger priority
         print(f"[STT] 🔄 Resetting user_wants_to_talk with priority 30...")
         await state.set("user_wants_to_talk", "False", source="stt", priority=30)
         
@@ -561,12 +567,30 @@ async def on_user_wants_to_talk(key, value, old):
             print("[STT] Setting human_speaking = False") 
             await state.set("human_speaking", "False", source="stt", priority=10)
             print("[STT] Speech recognition complete")
-            print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
+            
+            # Check if in paused mode - if so, automatically restart listening for control commands
+            listening_paused = state.get_value("listening_paused")
+            if listening_paused == "True":
+                print("[STT] 🎯 PAUSED mode - automatically restarting control command listening")
+                await asyncio.sleep(0.5)  # Brief delay
+                await state.set("user_wants_to_talk", "True", source="stt", priority=37)
+                print("[STT] ✅ Control command listening restarted")
+            else:
+                print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
         else:
             print("[STT] No transcript generated - not triggering LLM")
             print("[STT] Setting human_speaking = False") 
             await state.set("human_speaking", "False", source="stt", priority=10)
-            print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
+            
+            # Check if in paused mode - if so, automatically restart listening for control commands
+            listening_paused = state.get_value("listening_paused")
+            if listening_paused == "True":
+                print("[STT] 🎯 PAUSED mode - automatically restarting control command listening (no transcript)")
+                await asyncio.sleep(0.5)  # Brief delay
+                await state.set("user_wants_to_talk", "True", source="stt", priority=37)
+                print("[STT] ✅ Control command listening restarted")
+            else:
+                print("[STT] 🔄 Ready for next user_wants_to_talk trigger")
             
             # Signal GUI that no speech was detected
             await state.set("stt_ready", "False", source="stt", priority=20)
@@ -580,10 +604,9 @@ async def stt_listener():
     """Listen for user_wants_to_talk events"""
     global continuous_monitor
     
-    # Initialize critical states to proper defaults at startup
-    await state.set("ai_speaking", "False", source="startup", priority=10)
-    await state.set("ai_thinking", "False", source="startup", priority=10)
-    print("[STT] ✅ Initialized startup states")
+    # STT component initialization - removed ai_speaking and ai_thinking 
+    # since those states are managed by TTS and LLM components respectively
+    print("[STT] ✅ STT component initialized")
     
     whisper_server_url = json_config['whisper_server_url']
     sampling_rate = json_config['sampling_rate']

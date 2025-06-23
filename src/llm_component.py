@@ -208,6 +208,7 @@ class LLMComponent:
                 
                 # Update GUI status
                 await self.update_gui_listening_status("paused")
+                
                 return acknowledgment
                 
             elif control_action == "start":
@@ -691,8 +692,6 @@ async def http_process_transcript(request):
     try:
         data = await request.json()
         transcript = data.get("transcript", "")
-        
-        print(f"[LLM] 📥 Received transcript via HTTP: '{transcript}'")
         
         # Get the LLM component instance from the app context
         llm_comp = request.app['llm_component']

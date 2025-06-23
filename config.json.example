@@ -29,7 +29,7 @@
         "min_priority": 5
       },
       "interrupt_ai_speech": {
-        "allowed_sources": ["stt", "tts"],
+        "allowed_sources": ["stt", "tts", "llm"],
         "min_priority": 10
       }
     },
@@ -158,8 +158,8 @@
     "listening_control": {
       "enabled": true,
       "user_name": "Simon",
-      "stop_phrases": ["Samantha stop listen", "Samantha stop listening"],
-      "start_phrases": ["Samantha start listen", "Samantha start listening"],
+      "stop_phrases": ["samantha stop", "Samantha stop"],
+      "start_phrases": ["Samantha wake up", "samantha wake up", "samantha start", "Samantha start"],
       "stop_acknowledgment": "Ok {user_name} I stop listening",
       "start_acknowledgment": "Ok {user_name} I'm listening again"
     }

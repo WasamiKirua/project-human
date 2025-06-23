@@ -61,7 +61,7 @@ check-deps:
 	@[ -f ".venv/bin/activate" ] || { echo "❌ Virtual environment not found"; exit 1; }
 	@[ -f "config.json" ] || { echo "❌ config.json not found, run 'make setup'"; exit 1; }
 	@[ -f "whisper.cpp/build/bin/whisper-server" ] || { echo "❌ Whisper server not found"; exit 1; }
-	@[ -f "whisper.cpp/models/ggml-base.en.bin" ] || { echo "❌ Whisper model not found"; exit 1; }
+	@[ -f "whisper.cpp/models/ggml-medium.en.bin" ] || { echo "❌ Whisper model not found"; exit 1; }
 	@echo "✅ All dependencies found"
 
 # Service management
@@ -80,7 +80,7 @@ start-whisper:
 	@echo "Starting Whisper server..."
 	@mkdir -p logs
 	@nohup ./whisper.cpp/build/bin/whisper-server \
-		--model ./whisper.cpp/models/ggml-base.en.bin \
+		--model ./whisper.cpp/models/ggml-medium.en.bin \
 		--host 0.0.0.0 \
 		--port 8081 > logs/whisper.log 2>&1 & \
 	echo $$! > logs/whisper.pid && \

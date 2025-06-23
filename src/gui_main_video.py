@@ -1,6 +1,7 @@
 import sys
 import random
 import threading
+import time
 import json
 import requests
 import os
@@ -441,6 +442,14 @@ class MicControlApp(QWidget):
     def auto_start_listening(self):
         """Automatically start listening in continuous mode"""
         if self.continuous_mode and self.current_state == "ready":
+            # Check if listening is paused
+            listening_paused = state.get_value("listening_paused")
+            if listening_paused == "True":
+                print("[GUI] ⏸️ PAUSED mode - no auto-restart, waiting for manual trigger or start command")
+                bridge.update_status.emit("Status: Paused (listening for 'start listening') ⏸️")
+                # DO NOT auto-restart when paused - wait for manual trigger or start command
+                return
+                
             print("[GUI] Auto-starting listening in continuous mode")
             bridge.update_status.emit("Status: Auto-listening... 🔄")
             self.start_talking()
@@ -480,9 +489,9 @@ class MicControlApp(QWidget):
             print(f"[GUI]    ai_speaking: {current_ai_speaking}")
             print(f"[GUI]    human_speaking: {current_human_speaking}")
             
-            # Use higher priority than STT component (which uses 20)
-            print("[GUI] 🚀 Setting user_wants_to_talk = True with source=gui, priority=25")
-            result = state.set_value("user_wants_to_talk", "True", source="gui", priority=25)
+            # Use higher priority than STT component reset (which uses 30)
+            print("[GUI] 🚀 Setting user_wants_to_talk = True with source=gui, priority=35")
+            result = state.set_value("user_wants_to_talk", "True", source="gui", priority=35)
             print(f"[GUI] 📊 State update result: {result}")
             
             if result:
@@ -607,8 +616,12 @@ class MicControlApp(QWidget):
                 bridge.start_animation.emit()
                 
         elif key == "gui_listening_status":
-            # NEW: Handle listening status updates
+            # Handle listening status updates
             bridge.update_listening_status.emit(value)
+            
+        elif key == "listening_paused" and value == "True":
+            # When listening is paused, TTS will handle triggering control command listening
+            print("[GUI] 🎯 Listening paused detected - TTS will trigger control command listening after acknowledgment")
                 # Switch to speaking video
                 bridge.switch_to_speaking_video.emit()
             else:
