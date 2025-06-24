@@ -1,0 +1,304 @@
+/* Project Human Redis - Kawaii Theme CSS */
+
+:root {
+  /* Light Theme - Kawaii Colors */
+  --primary-color: #ff69b4;      /* Hot pink */
+  --secondary-color: #ffc0cb;    /* Light pink */
+  --accent-color: #98fb98;       /* Pale green */
+  --success-color: #90ee90;      /* Light green */
+  --warning-color: #ffd700;      /* Gold */
+  --danger-color: #ff6b6b;       /* Light red */
+  --info-color: #87ceeb;         /* Sky blue */
+  
+  --bg-primary: #fef7f7;         /* Very light pink */
+  --bg-secondary: #fff0f5;       /* Lavender blush */
+  --bg-card: #ffffff;            /* White */
+  --bg-muted: #f8f9fa;           /* Light gray */
+  
+  --text-primary: #2d3436;       /* Dark gray */
+  --text-secondary: #636e72;     /* Medium gray */
+  --text-muted: #b2bec3;         /* Light gray */
+  --text-inverse: #ffffff;       /* White */
+  
+  --border-color: #ffc0cb;       /* Light pink */
+  --border-radius: 15px;
+  --shadow: 0 4px 15px rgba(255, 105, 180, 0.1);
+}
+
+[data-theme="dark"] {
+  /* Dark Theme - Kawaii Colors */
+  --primary-color: #ff69b4;      /* Hot pink */
+  --secondary-color: #8b4a8b;    /* Dark orchid */
+  --accent-color: #40e0d0;       /* Turquoise */
+  --success-color: #90ee90;      /* Light green */
+  --warning-color: #ffd700;      /* Gold */
+  --danger-color: #ff6b6b;       /* Light red */
+  --info-color: #87ceeb;         /* Sky blue */
+  
+  --bg-primary: #1a1a2e;         /* Dark purple-blue */
+  --bg-secondary: #16213e;       /* Darker blue */
+  --bg-card: #2d2d44;            /* Dark gray-purple */
+  --bg-muted: #3d3d5c;           /* Medium gray-purple */
+  
+  --text-primary: #ffffff;       /* White */
+  --text-secondary: #e0e0e0;     /* Light gray */
+  --text-muted: #a0a0a0;         /* Medium gray */
+  --text-inverse: #1a1a2e;       /* Dark */
+  
+  --border-color: #8b4a8b;       /* Dark orchid */
+  --shadow: 0 4px 15px rgba(255, 105, 180, 0.2);
+}
+
+/* Base styling */
+body {
+  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+  color: var(--text-primary) !important;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 100vh;
+  transition: all 0.3s ease;
+}
+
+/* Ensure all text elements use theme colors */
+h1, h2, h3, h4, h5, h6, p, span, div, label {
+  color: inherit;
+}
+
+/* Force text color for specific elements */
+.card-body {
+  color: var(--text-primary);
+}
+
+.text-center {
+  color: var(--text-primary);
+}
+
+/* Custom card styling */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(255, 105, 180, 0.15);
+}
+
+.card-header {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: var(--text-inverse);
+  border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+  border: none;
+  font-weight: 600;
+}
+
+/* Status indicators */
+.status-running {
+  color: var(--success-color);
+  font-weight: bold;
+}
+
+.status-stopped {
+  color: var(--text-muted);
+}
+
+.status-error {
+  color: var(--danger-color);
+  font-weight: bold;
+}
+
+/* Buttons */
+.btn-kawaii {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  border: none;
+  color: var(--text-inverse);
+  border-radius: 25px;
+  padding: 8px 20px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.btn-kawaii:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(255, 105, 180, 0.3);
+  color: var(--text-inverse);
+}
+
+.btn-success-kawaii {
+  background: linear-gradient(135deg, var(--success-color), var(--accent-color));
+  border: none;
+  color: var(--text-inverse);
+  border-radius: 25px;
+  padding: 8px 20px;
+  font-weight: 500;
+}
+
+.btn-danger-kawaii {
+  background: linear-gradient(135deg, var(--danger-color), #ff8a8a);
+  border: none;
+  color: var(--text-inverse);
+  border-radius: 25px;
+  padding: 8px 20px;
+  font-weight: 500;
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  background: var(--bg-card);
+  border: 2px solid var(--primary-color);
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow);
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
+  background: var(--primary-color);
+  color: var(--text-inverse);
+}
+
+/* Status badges */
+.badge-kawaii {
+  border-radius: 15px;
+  padding: 6px 12px;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.badge-running {
+  background: var(--success-color);
+  color: var(--text-inverse);
+}
+
+.badge-stopped {
+  background: var(--text-muted);
+  color: var(--text-inverse);
+}
+
+.badge-error {
+  background: var(--danger-color);
+  color: var(--text-inverse);
+}
+
+.badge-success {
+  background: var(--success-color);
+  color: var(--text-inverse);
+}
+
+.badge-danger {
+  background: var(--danger-color);
+  color: var(--text-inverse);
+}
+
+.badge-secondary {
+  background: var(--text-muted);
+  color: var(--text-inverse);
+}
+
+/* Progress bars */
+.progress {
+  border-radius: 10px;
+  background: var(--bg-muted);
+}
+
+.progress-bar {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  border-radius: 10px;
+}
+
+/* Log viewer */
+.log-container {
+  background: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+}
+
+.log-line {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 192, 203, 0.1);
+  color: var(--text-secondary);
+}
+
+.log-line:hover {
+  background: rgba(255, 105, 180, 0.05);
+}
+
+/* Navbar */
+.navbar-kawaii {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  border-bottom: 3px solid var(--accent-color);
+}
+
+.navbar-brand {
+  color: var(--text-inverse) !important;
+  font-weight: bold;
+  font-size: 1.5rem;
+}
+
+/* Service grid */
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin: 20px 0;
+}
+
+/* Animations */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .service-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .theme-toggle {
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-muted);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary-color);
+}

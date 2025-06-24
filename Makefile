@@ -1,7 +1,7 @@
 # Project Human Redis - Makefile
-# AI Assistant with STT, TTS, LLM, and GUI components
+# AI Assistant with STT, TTS, LLM, GUI, and Web Interface components
 
-.PHONY: help setup start stop status clean gui gui-video stt tts llm all-components check-deps check-services logs
+.PHONY: help setup start stop status clean gui gui-video stt tts llm all-components check-deps check-services logs web-interface
 
 # Default target
 help:
@@ -20,6 +20,8 @@ help:
 	@echo "  stt             - Start Speech-to-Text component only"
 	@echo "  tts             - Start Text-to-Speech component only"
 	@echo "  llm             - Start LLM component only"
+	@echo "  web-interface   - Start Web Interface only"
+	@echo "  stop-web-interface - Stop Web Interface only"
 	@echo "  all-components  - Start all Python components (assumes services running)"
 	@echo ""
 	@echo "Services:"
@@ -144,12 +146,32 @@ llm:
 	@echo "Starting LLM component..."
 	@source .venv/bin/activate && python src/llm_component.py
 
+web-interface:
+	@echo "Starting Web Interface..."
+	@source .venv/bin/activate && python src/webinterface/app.py
+
+stop-web-interface:
+	@echo "Stopping Web Interface..."
+	@if [ -f logs/webinterface.pid ]; then \
+		PID=$$(cat logs/webinterface.pid); \
+		if kill -0 $$PID 2>/dev/null; then \
+			kill $$PID && echo "Web Interface stopped (PID: $$PID)"; \
+		else \
+			echo "Web Interface not running (stale PID file)"; \
+		fi; \
+		rm -f logs/webinterface.pid; \
+	else \
+		echo "No Web Interface PID file found"; \
+		pkill -f "src/webinterface/app.py" 2>/dev/null && echo "Killed any running web interface processes" || echo "No web interface processes found"; \
+	fi
+
 start-components:
 	@echo "Starting all Python components..."
 	@mkdir -p logs
 	@source .venv/bin/activate && python src/stt_component.py & echo $$! > logs/stt.pid
 	@source .venv/bin/activate && python src/tts_component.py & echo $$! > logs/tts.pid  
 	@source .venv/bin/activate && python src/llm_component.py & echo $$! > logs/llm.pid
+	@source .venv/bin/activate && python src/webinterface/app.py & echo $$! > logs/webinterface.pid
 	@echo "Background components started. Starting GUI..."
 	@source .venv/bin/activate && python src/gui_main.py
 
@@ -178,7 +200,7 @@ status:
 	@$(MAKE) check-services
 	@echo ""
 	@echo "Python Components:"
-	@for comp in stt tts llm; do \
+	@for comp in stt tts llm webinterface; do \
 		echo -n "$$comp: "; \
 		if [ -f logs/$$comp.pid ] && kill -0 $$(cat logs/$$comp.pid) 2>/dev/null; then \
 			echo "✅ Running (PID: $$(cat logs/$$comp.pid))"; \

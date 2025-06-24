@@ -440,7 +440,7 @@ class MemoryComponent:
                 print(f"[Memory] ❌ Error in Groq API call: {e}")
                 import traceback
                 traceback.print_exc()
-                return f"Error: {str(e)}"
+                return None  # Return None instead of error string to prevent storing errors as memories
             # No finally needed - context manager handles cleanup automatically
 
     async def store_memory_if_important(self, user_input, ai_response, formatted_memory):

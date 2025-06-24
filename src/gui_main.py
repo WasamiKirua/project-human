@@ -224,7 +224,7 @@ class MicControlApp(QWidget):
         # Layout
         layout = QVBoxLayout()
         layout.addWidget(self.status_label)
-        layout.addWidget(self.listening_status_label)  # NEW: Kawaii listening indicator
+        layout.addWidget(self.listening_status_label)
         layout.addWidget(self.wave_widget, stretch=1)
         layout.addWidget(self.talk_button)
         layout.addWidget(self.health_button)  # Add health button
