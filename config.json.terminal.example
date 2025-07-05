@@ -1,0 +1,171 @@
+{
+    "rules": {
+      "human_speaking": {
+        "allowed_sources": ["terminal", "stt"],
+        "min_priority": 1
+      },
+      "ai_speaking": {
+        "allowed_sources": ["tts"],
+        "min_priority": 2
+      },
+      "tts_ready": {
+        "allowed_sources": ["llm", "tts"],
+        "min_priority": 5
+      },
+      "tts_text": {
+        "allowed_sources": ["llm", "tts"],
+        "min_priority": 3
+      },
+      "user_wants_to_talk": {
+        "allowed_sources": ["terminal", "stt", "listening_controller", "llm"],
+        "min_priority": 1
+      },
+      "stt_ready": {
+        "allowed_sources": ["stt", "llm"],
+        "min_priority": 5
+      },
+      "ai_thinking": {
+        "allowed_sources": ["llm"],
+        "min_priority": 5
+      },
+      "interrupt_ai_speech": {
+        "allowed_sources": ["stt", "tts", "llm"],
+        "min_priority": 10
+      },
+      "terminal_listening_status": {
+        "allowed_sources": ["llm"],
+        "min_priority": 5
+      },
+      "listening_paused": {
+        "allowed_sources": ["listening_controller", "terminal", "llm"],
+        "min_priority": 1
+      },
+      "acknowledgment_playing": {
+        "allowed_sources": ["llm", "tts"],
+        "min_priority": 5
+      }
+    },
+
+    "redis": {
+      "host": "localhost",
+      "port": 6379,
+      "password": "rhost21",
+      "decode_responses": true,
+      "socket_timeout": 5,
+      "socket_connect_timeout": 5,
+      "retry_on_timeout": true
+    },
+
+    "stt": {
+      "whisper_server_url": "http://localhost:8081",
+      "whisper_api_url": "http://localhost:8081/inference",
+      "whisper_health_url": "http://localhost:8081/health",
+      "sampling_rate": 16000,
+      "channels": 1,
+      "chunk_size": 512,
+      "vad_threshold": 0.5,
+      "amplitude_threshold": 0.05,
+      "silence_duration": 2.0,
+      "min_audio_length": 1.0,
+      "max_recording_duration": 180
+    },
+
+    "tts": {
+      "_comment": "TTS Providers: replicate, openai",
+      "tts_provider": "replicate",
+      "replicate_model": "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13"
+    },
+
+    "api_keys": {
+      "openai_api_key": "",
+      "groq_api_key": "",
+      "open_router": "",
+      "replicate_api_key": "",
+      "tavily_api_key": ""
+    },
+
+    "memory": {
+      "db_store": "shortmemdb",
+      "collection_name": "ConversationMemory",
+      "cluster_url": "http://localhost:8080"
+    },
+
+    "lorebook": {
+      "creator": "Creator's name is ....",
+      "likes": "User likes ...",
+      "hobbies": "",
+      "mangas_artists": "",
+      "mangas": "",
+      "gaming": ""
+    },
+
+    "router": {
+      "provider": "openrouter",
+      "models": "google/gemini-2.5-pro-exp-03-25,mistralai/mistral-7b-instruct:free"
+    },
+
+    "llm": {
+      "llama_cpp": {
+        "_comment": "Set to true if want to use",
+        "enabled": "true",
+        "port": "8084",
+        "api_key": "not-needed",
+        "model": "local-model"
+      },
+
+      "ollama": {
+        "_comment": "Set to true if want to use",
+        "enabled": "false",
+        "port": "11434"
+      },
+
+      "lmstudio": {
+        "_comment": "Set to true if want to use",
+        "enabled": "false",
+        "port": "1234"
+      },
+
+      "vllm": {
+        "_comment": "Set to true if want to use",
+        "enabled": "false",
+        "bearer": "",
+        "model": "", 
+        "vast_ai_ip": "",
+        "vast_ai_port": ""
+      }
+    },
+
+    "tools": {
+      "weather": {
+        "api_key": "",
+        "base_url": "https://api.weatherstack.com/",
+        "default_location": "Tokyo, Japan"
+      },
+
+      "news": {
+        "tavily_api_key": "",
+        "default_news": "Latest world news",
+        "max_results": 3
+      },
+
+      "movies": {
+        "tavily_api_key": "",
+        "default_movie": "Best movies of the year",
+        "max_results": 3
+      },
+
+      "finance": {
+        "default_finance": "Latest price of Bitcoin",
+        "max_results": 2
+      }
+    },
+
+    "listening_control": {
+      "enabled": true,
+      "user_name": "Simon",
+      "stop_phrases": ["samantha stop listening", "Samantha stop listening"],
+      "start_phrases": ["Samantha wake up", "samantha wake up", "samantha start", "Samantha start", "samantha start listening", "Samantha start listening"],
+      "stop_acknowledgment": "Ok {user_name} I stop listening",
+      "start_acknowledgment": "Ok {user_name} I'm listening again"
+    }
+}

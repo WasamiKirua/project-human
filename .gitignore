@@ -1,0 +1,38 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Test files
+test_*
+
+# Whisper.cpp bins and models
+whisper.cpp/
+
+# Virtual environments
+.venv/
+venv/
+
+# DS_Store and Memory
+.DS_Store
+shortmemdb
+redis/
+weaviate_data/
+
+# Configuration sensible
+config.json
+
+# WAVs
+*.wav
+
+# MP4
+*.mp4
+
+# Logs
+logs/
+
+# VS Code
+.vscode

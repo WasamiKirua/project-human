@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Project Human Redis{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="display-6">🤖 AI Assistant Dashboard</h1>
+            <div>
+                <button id="refreshBtn" class="btn btn-kawaii">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-success-kawaii w-100" onclick="handleBulkAction('infrastructure/start-all', this)">
+                            <i class="bi bi-play"></i> Start Infrastructure
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-success-kawaii w-100" onclick="handleBulkAction('components/start-all', this)">
+                            <i class="bi bi-play"></i> Start Components
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-danger-kawaii w-100" onclick="handleBulkAction('components/stop-all', this)">
+                            <i class="bi bi-stop"></i> Stop Components
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-danger-kawaii w-100" onclick="handleBulkAction('infrastructure/stop-all', this)">
+                            <i class="bi bi-stop"></i> Stop Infrastructure
+                        </button>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12 text-center">
+                        <button class="btn btn-kawaii" onclick="handleBulkAction('restart-all', this)">
+                            <i class="bi bi-arrow-clockwise"></i> Restart Everything
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Infrastructure Services -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-server"></i> Infrastructure Services</h5>
+            </div>
+            <div class="card-body">
+                <div class="service-grid">
+                    <!-- Redis -->
+                    <div class="card border" id="redis-card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">
+                                <i class="bi bi-database"></i> Redis
+                                <span id="redis-badge" class="badge badge-kawaii badge-stopped ms-2">STOPPED</span>
+                            </h6>
+                            <p class="card-text">
+                                Status: <span id="redis-status" class="status-stopped">STOPPED</span><br>
+                                <small id="redis-message" class="text-muted">Not running</small>
+                            </p>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-success-kawaii btn-sm" data-service="redis" data-action="start">
+                                    <i class="bi bi-play"></i> Start
+                                </button>
+                                <button class="btn btn-danger-kawaii btn-sm" data-service="redis" data-action="stop">
+                                    <i class="bi bi-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Weaviate -->
+                    <div class="card border" id="weaviate-card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">
+                                <i class="bi bi-diagram-3"></i> Weaviate
+                                <span id="weaviate-badge" class="badge badge-kawaii badge-stopped ms-2">STOPPED</span>
+                            </h6>
+                            <p class="card-text">
+                                Status: <span id="weaviate-status" class="status-stopped">STOPPED</span><br>
+                                <small id="weaviate-message" class="text-muted">Not running</small>
+                            </p>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-success-kawaii btn-sm" data-service="weaviate" data-action="start">
+                                    <i class="bi bi-play"></i> Start
+                                </button>
+                                <button class="btn btn-danger-kawaii btn-sm" data-service="weaviate" data-action="stop">
+                                    <i class="bi bi-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Whisper -->
+                    <div class="card border" id="whisper-card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">
+                                <i class="bi bi-mic"></i> Whisper
+                                <span id="whisper-badge" class="badge badge-kawaii badge-stopped ms-2">STOPPED</span>
+                            </h6>
+                            <p class="card-text">
+                                Status: <span id="whisper-status" class="status-stopped">STOPPED</span><br>
+                                <small id="whisper-message" class="text-muted">Not running</small>
+                            </p>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-success-kawaii btn-sm" data-service="whisper" data-action="start">
+                                    <i class="bi bi-play"></i> Start
+                                </button>
+                                <button class="btn btn-danger-kawaii btn-sm" data-service="whisper" data-action="stop">
+                                    <i class="bi bi-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Python Components -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-cpu"></i> Python Components</h5>
+            </div>
+            <div class="card-body">
+                <div class="service-grid">
+                    <!-- STT Component -->
+                    <div class="card border" id="stt-card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">
+                                <i class="bi bi-soundwave"></i> Speech-to-Text
+                                <span id="stt-badge" class="badge badge-kawaii badge-stopped ms-2">STOPPED</span>
+                            </h6>
+                            <p class="card-text">
+                                Status: <span id="stt-status" class="status-stopped">STOPPED</span><br>
+                                <small id="stt-message" class="text-muted">Not running</small>
+                            </p>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-success-kawaii btn-sm" data-service="stt" data-action="start">
+                                    <i class="bi bi-play"></i> Start
+                                </button>
+                                <button class="btn btn-danger-kawaii btn-sm" data-service="stt" data-action="stop">
+                                    <i class="bi bi-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- TTS Component -->
+                    <div class="card border" id="tts-card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">
+                                <i class="bi bi-volume-up"></i> Text-to-Speech
+                                <span id="tts-badge" class="badge badge-kawaii badge-stopped ms-2">STOPPED</span>
+                            </h6>
+                            <p class="card-text">
+                                Status: <span id="tts-status" class="status-stopped">STOPPED</span><br>
+                                <small id="tts-message" class="text-muted">Not running</small>
+                            </p>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-success-kawaii btn-sm" data-service="tts" data-action="start">
+                                    <i class="bi bi-play"></i> Start
+                                </button>
+                                <button class="btn btn-danger-kawaii btn-sm" data-service="tts" data-action="stop">
+                                    <i class="bi bi-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- LLM Component -->
+                    <div class="card border" id="llm-card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">
+                                <i class="bi bi-brain"></i> Language Model
+                                <span id="llm-badge" class="badge badge-kawaii badge-stopped ms-2">STOPPED</span>
+                            </h6>
+                            <p class="card-text">
+                                Status: <span id="llm-status" class="status-stopped">STOPPED</span><br>
+                                <small id="llm-message" class="text-muted">Not running</small>
+                            </p>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-success-kawaii btn-sm" data-service="llm" data-action="start">
+                                    <i class="bi bi-play"></i> Start
+                                </button>
+                                <button class="btn btn-danger-kawaii btn-sm" data-service="llm" data-action="stop">
+                                    <i class="bi bi-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- GUI Component -->
+                    <div class="card border" id="gui-card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">
+                                <i class="bi bi-window"></i> GUI Interface
+                                <span id="gui-badge" class="badge badge-kawaii badge-stopped ms-2">STOPPED</span>
+                            </h6>
+                            <p class="card-text">
+                                Status: <span id="gui-status" class="status-stopped">STOPPED</span><br>
+                                <small id="gui-message" class="text-muted">Not running</small>
+                            </p>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-success-kawaii btn-sm" data-service="gui" data-action="start">
+                                    <i class="bi bi-play"></i> Start
+                                </button>
+                                <button class="btn btn-danger-kawaii btn-sm" data-service="gui" data-action="stop">
+                                    <i class="bi bi-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-activity"></i> Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Activity monitoring will be implemented in future updates.</p>
+                <small class="text-muted">
+                    Features coming soon:
+                    <ul class="mt-2">
+                        <li>Real-time conversation logs</li>
+                        <li>Component performance metrics</li>
+                        <li>Error notifications</li>
+                        <li>Database management tools</li>
+                    </ul>
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Additional dashboard-specific JavaScript can go here
+console.log('Dashboard template loaded');
+</script>
+{% endblock %}
