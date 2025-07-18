@@ -5,19 +5,26 @@ import os
 
 def load_redis_config():
     """Load Redis configuration from config.json"""
-    config_path = 'config.json'
-    if not os.path.exists(config_path):
-        config_path = '../config.json'  # For when running from src/
+    # config.json is always in the project root
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
     
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-    
-    return config.get("redis", {
-        "host": "localhost",
-        "port": 6379,
-        "password": "rhost21",
-        "decode_responses": True
-    })
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        return config.get("redis", {
+            "host": "localhost",
+            "port": 6379,
+            "password": "rhost21",
+            "decode_responses": True
+        })
+    except Exception as e:
+        print(f"[Redis] ❌ Error loading config from {config_path}: {e}")
+        return {
+            "host": "localhost",
+            "port": 6379,
+            "password": "rhost21",
+            "decode_responses": True
+        }
 
 def create_redis_client():
     """Create Redis client with loaded configuration"""

@@ -67,7 +67,13 @@
       "amplitude_threshold": 0.05,
       "silence_duration": 2.0,
       "min_audio_length": 1.0,
-      "max_recording_duration": 180
+      "max_recording_duration": 180,
+      "temporal_smoothing": {
+        "enabled": true,
+        "confidence_buffer_size": 5,
+        "start_threshold_ratio": 0.7,
+        "continue_threshold_ratio": 0.9
+      }
     },
 
     "tts": {

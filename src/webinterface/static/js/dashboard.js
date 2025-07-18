@@ -106,9 +106,6 @@ class Dashboard {
                 this.updateServiceStatus(data.data.services);
                 this.updateSystemInfo(data.data.system);
                 break;
-            case 'logs_update':
-                this.updateLogs(data.data.component, data.data.logs);
-                break;
             case 'pong':
                 // Handle ping/pong for connection health
                 break;
@@ -141,7 +138,6 @@ class Dashboard {
         
         // Note: System info elements removed from template
         // This function exists to prevent errors but doesn't update anything
-        console.log('System info received:', systemInfo);
     }
 
     updateServiceCard(serviceName, status, category) {

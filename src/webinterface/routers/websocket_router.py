@@ -3,7 +3,6 @@ WebSocket Router - Real-time updates for status monitoring
 """
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-import asyncio
 import json
 import sys
 from pathlib import Path
@@ -30,50 +29,6 @@ class ConnectionManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
         print(f"[WebSocket] Client disconnected. Total connections: {len(self.active_connections)}")
-
-    async def send_to_all(self, message: dict):
-        """Send message to all connected clients"""
-        if not self.active_connections:
-            return
-        
-        message_str = json.dumps(message)
-        disconnected = set()
-        
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message_str)
-            except Exception as e:
-                print(f"[WebSocket] Error sending to client: {e}")
-                disconnected.add(connection)
-        
-        # Remove disconnected clients
-        for connection in disconnected:
-            self.disconnect(connection)
-
-    async def broadcast_status_updates(self):
-        """Continuously broadcast status updates to all clients"""
-        while True:
-            try:
-                if self.active_connections:
-                    # Get current status
-                    status = self.service_manager.get_service_status()
-                    system_info = self.service_manager.get_system_info()
-                    
-                    # Send status update
-                    await self.send_to_all({
-                        "type": "status_update",
-                        "data": {
-                            "services": status,
-                            "system": system_info,
-                            "timestamp": asyncio.get_event_loop().time()
-                        }
-                    })
-                
-                # Wait before next update
-                await asyncio.sleep(5)  # Update every 5 seconds
-            except Exception as e:
-                print(f"[WebSocket] Error in broadcast loop: {e}")
-                await asyncio.sleep(5)
 
 manager = ConnectionManager()
 
@@ -114,18 +69,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             "system": system_info
                         }
                     }))
-                elif message.get("type") == "request_logs":
-                    component = message.get("component", "")
-                    lines = message.get("lines", 50)
-                    if component:
-                        logs = manager.service_manager.get_logs(component, lines)
-                        await websocket.send_text(json.dumps({
-                            "type": "logs_update",
-                            "data": {
-                                "component": component,
-                                "logs": logs
-                            }
-                        }))
                 
             except WebSocketDisconnect:
                 break
@@ -137,10 +80,3 @@ async def websocket_endpoint(websocket: WebSocket):
         pass
     finally:
         manager.disconnect(websocket)
-
-# Start the background task for broadcasting status updates
-@router.on_event("startup")
-async def startup_event():
-    # Start background task for status broadcasting
-    asyncio.create_task(manager.broadcast_status_updates())
-    print("[WebSocket] Started background status broadcasting")

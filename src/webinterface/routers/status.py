@@ -62,8 +62,13 @@ async def get_component_logs(component: str, lines: int = 50) -> Dict[str, List[
 
 @router.get("/system")
 async def get_system_info() -> Dict:
-    """Get system information"""
+    """Get basic system information"""
     try:
-        return service_manager.get_system_info()
+        import psutil
+        return {
+            "cpu_percent": psutil.cpu_percent(interval=1),
+            "memory_percent": psutil.virtual_memory().percent,
+            "disk_percent": psutil.disk_usage('/').percent
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get system info: {str(e)}")

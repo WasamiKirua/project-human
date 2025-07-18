@@ -21,10 +21,14 @@ class ServiceManager:
         # Initialize Redis connection
         try:
             self.redis_client = create_redis_client()
-            # Use absolute path to config.json
+            # Use absolute path to config.json - go up 4 levels from utils/service_manager.py
             config_path = self.project_root / "config.json"
-            self.state = RedisState(self.redis_client, str(config_path))
-            print("[ServiceManager] ✅ Connected to Redis")
+            if config_path.exists():
+                self.state = RedisState(self.redis_client, str(config_path))
+                print(f"[ServiceManager] ✅ Connected to Redis with config: {config_path}")
+            else:
+                print(f"[ServiceManager] ⚠️ Config file not found at {config_path}, using Redis without state rules")
+                self.state = None
         except Exception as e:
             print(f"[ServiceManager] ❌ Redis connection failed: {e}")
             self.redis_client = None

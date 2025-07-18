@@ -43,10 +43,39 @@
   --text-primary: #ffffff;       /* White */
   --text-secondary: #e0e0e0;     /* Light gray */
   --text-muted: #a0a0a0;         /* Medium gray */
-  --text-inverse: #1a1a2e;       /* Dark */
+  --text-inverse: #ffffff;       /* White */
   
   --border-color: #8b4a8b;       /* Dark orchid */
   --shadow: 0 4px 15px rgba(255, 105, 180, 0.2);
+}
+
+/* Dark theme text overrides */
+[data-theme="dark"] * {
+  color: var(--text-primary) !important;
+}
+
+/* Chrome-specific fixes */
+[data-theme="dark"] .card-text,
+[data-theme="dark"] .card-body p,
+[data-theme="dark"] .card-body span,
+[data-theme="dark"] .card-body small,
+[data-theme="dark"] p.card-text {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+[data-theme="dark"] .text-muted,
+[data-theme="dark"] small {
+  color: var(--text-secondary) !important;
+  -webkit-text-fill-color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .card-header {
+  color: var(--text-inverse) !important;
+}
+
+[data-theme="dark"] .navbar-brand {
+  color: var(--text-inverse) !important;
 }
 
 /* Base styling */
@@ -65,11 +94,35 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {
 
 /* Force text color for specific elements */
 .card-body {
-  color: var(--text-primary);
+  color: var(--text-primary) !important;
+}
+
+.card-text {
+  color: var(--text-primary) !important;
 }
 
 .text-center {
-  color: var(--text-primary);
+  color: var(--text-primary) !important;
+}
+
+.text-muted {
+  color: var(--text-secondary) !important;
+}
+
+/* Fix small text elements */
+small, .small {
+  color: var(--text-secondary) !important;
+}
+
+/* Fix specific status text */
+#redis-message, #weaviate-message, #whisper-message,
+#stt-message, #tts-message, #llm-message, #gui-message {
+  color: var(--text-secondary) !important;
+}
+
+/* Card text */
+.card-body p, .card-body ul, .card-body li {
+  color: var(--text-primary) !important;
 }
 
 /* Custom card styling */

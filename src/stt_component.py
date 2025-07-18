@@ -55,13 +55,14 @@ class ContinuousAudioMonitor:
         self.last_interruption_time = 0  # Add debouncing timestamp
         
     def process_vad_chunk(self, audio_chunk):
-        """Process audio chunk with Silero VAD"""
+        """Process audio chunk with Silero VAD using direct model call (VADIterator not working properly)"""
         if not SILERO_AVAILABLE or silero_model is None:
             # Fallback to amplitude detection
             return np.max(np.abs(audio_chunk)) > 0.02  # Lower threshold for interruption
         
         try:
             if len(audio_chunk) == self.chunk_size:
+                # VADIterator returns None, so use direct model call which works reliably
                 speech_prob = silero_model(torch.from_numpy(audio_chunk), self.sampling_rate).item()
                 return speech_prob > self.vad_threshold
             return False
@@ -211,19 +212,72 @@ class SileroVADAudioRecorder:
         self.completed_audio = None
         self.audio_lock = threading.Lock()
         
+        # Temporal smoothing configuration from config.json
+        temporal_config = json_config.get('temporal_smoothing', {})
+        self.enable_temporal_smoothing = temporal_config.get('enabled', False)
+        self.confidence_buffer_size = temporal_config.get('confidence_buffer_size', 5)
+        
+        # Calculate thresholds from ratios (no hardcoded values)
+        start_ratio = temporal_config.get('start_threshold_ratio', 0.7)
+        continue_ratio = temporal_config.get('continue_threshold_ratio', 0.9)
+        self.speech_start_threshold = self.vad_threshold * start_ratio
+        self.speech_continue_threshold = self.vad_threshold * continue_ratio
+        
+        # Temporal smoothing variables
+        self.confidence_buffer = []
+        self.smoothed_confidence = 0.0
+        
     def process_vad_chunk(self, audio_chunk):
-        """Process audio chunk with Silero VAD"""
+        """Process audio chunk with Silero VAD using direct model call (VADIterator not working properly)"""
         if not SILERO_AVAILABLE or silero_model is None:
             return np.max(np.abs(audio_chunk)) > self.amplitude_threshold
         
         try:
             if len(audio_chunk) == self.chunk_size:
+                # VADIterator returns None, so use direct model call which works reliably
                 speech_prob = silero_model(torch.from_numpy(audio_chunk), self.sampling_rate).item()
                 return speech_prob > self.vad_threshold
             return False
         except Exception as e:
             print(f"[STT] VAD processing error: {e}")
             return np.max(np.abs(audio_chunk)) > self.amplitude_threshold
+    
+    def process_vad_chunk_with_smoothing(self, audio_chunk):
+        """Process audio chunk with temporal smoothing and hysteresis"""
+        if not self.enable_temporal_smoothing:
+            # Fallback to original method if smoothing disabled
+            return self.process_vad_chunk(audio_chunk)
+        
+        if not SILERO_AVAILABLE or silero_model is None:
+            return np.max(np.abs(audio_chunk)) > self.amplitude_threshold
+        
+        try:
+            if len(audio_chunk) == self.chunk_size:
+                # Get raw speech probability
+                speech_prob = silero_model(torch.from_numpy(audio_chunk), self.sampling_rate).item()
+                
+                # Add to confidence buffer
+                self.confidence_buffer.append(speech_prob)
+                if len(self.confidence_buffer) > self.confidence_buffer_size:
+                    self.confidence_buffer.pop(0)
+                
+                # Calculate smoothed confidence (running average)
+                self.smoothed_confidence = sum(self.confidence_buffer) / len(self.confidence_buffer)
+                
+                # Apply hysteresis: different thresholds for starting vs continuing speech
+                if not self.is_recording:
+                    # Not currently recording - use lower threshold to start
+                    is_speech = self.smoothed_confidence > self.speech_start_threshold
+                else:
+                    # Currently recording - use higher threshold to continue (prevents premature stops)
+                    is_speech = self.smoothed_confidence > self.speech_continue_threshold
+                
+                return is_speech
+            return False
+        except Exception as e:
+            print(f"[STT] VAD smoothing error: {e}")
+            # Fallback to original method
+            return self.process_vad_chunk(audio_chunk)
     
     def audio_callback(self, indata, frames, time_info, status):
         """Real-time audio callback with Silero VAD processing"""
@@ -238,7 +292,7 @@ class SileroVADAudioRecorder:
             chunk = self.chunk_buffer[:self.chunk_size]
             self.chunk_buffer = self.chunk_buffer[self.chunk_size:]
             
-            is_speech = self.process_vad_chunk(chunk)
+            is_speech = self.process_vad_chunk_with_smoothing(chunk)
             
             if is_speech:
                 self.last_speech_time = current_time
@@ -248,7 +302,7 @@ class SileroVADAudioRecorder:
                     self.recording_start_time = current_time
                     with self.audio_lock:
                         self.audio_buffer = []
-                    print("[STT] 🎤 Speech detected by Silero VAD, recording...")
+                    print("[STT] 🎤 Speech detected by Silero VAD with temporal smoothing, recording...")
                 
                 with self.audio_lock:
                     self.audio_buffer.extend((chunk * 32767).astype(np.int16))
@@ -635,11 +689,21 @@ async def stt_listener():
         print(f"[STT] VAD Configuration:")
         print(f"[STT]   - Sampling Rate: {sampling_rate} Hz")
         print(f"[STT]   - Chunk Size: {chunk_size} samples ({chunk_size/sampling_rate*1000:.0f}ms)")
-        print(f"[STT]   - Silero VAD Threshold: {vad_threshold}")
+        print(f"[STT]   - Base VAD Threshold: {vad_threshold}")
         print(f"[STT]   - Fallback Amplitude Threshold: {amplitude_threshold}")
         print(f"[STT]   - Silence Duration: {silence_duration}s")
         print(f"[STT]   - Min Audio Length: {min_audio_length}s")
         print(f"[STT]   - Max Recording Duration: {max_recording_duration}s")
+        
+        # Show temporal smoothing configuration
+        temporal_config = json_config.get('temporal_smoothing', {})
+        if temporal_config.get('enabled', False):
+            print(f"[STT]   - Temporal Smoothing: ENABLED")
+            print(f"[STT]     * Confidence Buffer Size: {temporal_config.get('confidence_buffer_size', 5)} chunks")
+            print(f"[STT]     * Start Threshold Ratio: {temporal_config.get('start_threshold_ratio', 0.7)} (={vad_threshold * temporal_config.get('start_threshold_ratio', 0.7):.3f})")
+            print(f"[STT]     * Continue Threshold Ratio: {temporal_config.get('continue_threshold_ratio', 0.9)} (={vad_threshold * temporal_config.get('continue_threshold_ratio', 0.9):.3f})")
+        else:
+            print(f"[STT]   - Temporal Smoothing: DISABLED (using base threshold {vad_threshold})")
     
     print("[STT] Listening for GUI triggers and state changes...")
     print("[STT] Using HTTP API to communicate with LLM component...")
